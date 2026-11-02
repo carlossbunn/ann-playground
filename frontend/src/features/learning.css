@@ -1,0 +1,92 @@
+.learning-controls .field input {
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  border: 1px solid #d8e1ee;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 12px;
+  color: #354862;
+}
+.learning-controls input:focus-visible { outline: 3px solid #5679df; outline-offset: 3px; }
+.learning-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 22px 0; }
+.learning-fields > p { font-size: 11px; }
+.layer-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin: 20px 0; }
+.layer-row { display: flex; align-items: flex-end; gap: 10px; }
+.layer-row > .field { flex: 1; }
+.layer-row .icon-button { flex-shrink: 0; margin-bottom: 4px; }
+.activation-field { max-width: 280px; margin: 22px 0 0; }
+.check-field { display: flex; align-items: flex-start; gap: 10px; color: #4b627f; font-size: 11px; }
+.check-field input { flex-shrink: 0; width: 16px !important; height: 16px !important; margin: 3px 0 0; accent-color: #315ddb; }
+.network-diagram { display: flex; align-items: center; gap: 18px; overflow-x: auto; padding: 20px 2px; }
+.network-diagram > div { position: relative; flex-shrink: 0; width: 105px; border: 1px solid #cddbf8; border-radius: 10px; background: #f1f5ff; text-align: center; padding: 18px 8px; }
+.network-diagram > div + div::before { content: '→'; position: absolute; left: -16px; top: 35%; color: #5c759b; }
+.network-diagram strong { font-size: 24px; color: #3156aa; display: block; }
+.network-diagram span { display: block; font-size: 9px; color: #50668c; }
+.parameter-total { display: flex; align-items: baseline; gap: 10px; margin: 20px 0; color: #5b6f8d; font-size: 11px; }
+.parameter-total strong { color: #224d9a; font-size: 28px; letter-spacing: -1px; }
+.train-button { margin-top: 12px; }
+.active-run-selector { margin: 24px 0; }
+.run-results progress { width: 100%; height: 9px; accent-color: #315ddb; margin: 10px 0 20px; }
+.run-progress { font-size: 11px; color: #566e8b; }
+.status-completed { color: #10745e; background: #e9f6f0; }
+.status-running, .status-queued { color: #3355a1; background: #ecf1ff; }
+.status-failed, .status-interrupted { color: #963e2c; background: #fff0e9; }
+.curve-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.curve-tabs button { border: 1px solid #d8e3f3; border-radius: 6px; background: #fff; color: #526a8b; font-size: 10px; padding: 7px 12px; }
+.curve-tabs button[aria-pressed="true"] { background: #edf2ff; border-color: #5978c6; color: #3155ad; }
+.learning-chart { width: 100%; min-width: 0; }
+.metric-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 20px 0; background: #f7f9fd; border: 1px solid #e5eaf2; border-radius: 8px; }
+.metric-cards > div { padding: 14px 10px; border-right: 1px solid #e5eaf2; }
+.metric-cards > div:last-child { border: 0; }
+.metric-cards span { display: block; font-size: 9px; color: #526986; }
+.metric-cards strong { display: block; font-size: 18px; color: #264a86; margin-top: 5px; letter-spacing: -.5px; }
+.export-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 17px 0; font-size: 10px; color: #536b8c; }
+.export-links a { color: #2d53b0; text-decoration: underline; text-underline-offset: 3px; }
+.export-links strong { font-weight: 600; margin-right: 5px; }
+.empty-learning { text-align: center; padding: 35px 15px; color: #5a75a5; }
+.empty-learning h2, .empty-learning h3 { margin: 16px 0 8px; }
+.empty-learning p { font-size: 11px; }
+.ranking-field { max-width: 320px; margin-bottom: 20px; }
+.experiment-table th { vertical-align: top; }
+.experiment-table tbody th { background: #fff; font-weight: 500; padding: 13px; }
+.experiment-table tbody th small { display: block; color: #536c8e; font-size: 9px; margin-top: 4px; }
+.experiment-table input[type="checkbox"] { accent-color: #315ddb; width: 16px; height: 16px; }
+.run-actions { display: flex; gap: 6px; flex-direction: column; align-items: stretch; }
+.run-actions button { border: 1px solid #d7e0f1; border-radius: 5px; padding: 5px 9px; background: #f7f9ff; font-size: 9px; color: #355ca5; }
+.run-actions button:disabled { color: #60718c; }
+.final-gate { text-align: center; padding: 35px 25px; }
+.final-gate > svg { color: #657ead; margin-bottom: 15px; }
+.final-gate h2 { font-size: 21px; }
+.final-gate p { font-size: 12px; line-height: 1.9; }
+.final-confirmation { text-align: left; margin: 25px 0; background: #f1f5ff; padding: 16px; border-radius: 8px; }
+.confusion-scroll { overflow-x: auto; margin: 20px 0; }
+.confusion-matrix { width: 100%; border-collapse: separate; border-spacing: 7px; min-width: 360px; }
+.confusion-matrix caption { text-align: left; font-size: 11px; color: #526a8b; padding: 10px 0; }
+.confusion-matrix th { font-size: 10px; font-weight: 500; color: #526986; padding: 7px; }
+.confusion-matrix td { text-align: center; padding: 20px 12px; border-radius: 8px; }
+.confusion-matrix .correct { background: #e7f4ef; color: #145d4e; }
+.confusion-matrix .incorrect { background: #fff1e6; color: #884821; }
+.confusion-matrix strong { display: block; font-size: 29px; letter-spacing: -1px; }
+.confusion-matrix span { display: block; font-size: 10px; margin-top: 6px; }
+.experiments-link { margin-top: 16px; font-size: 11px; }
+@media (max-width: 1100px) {
+  .metric-cards strong { font-size: 15px; }
+  .metric-cards > div { padding: 12px 7px; }
+}
+@media (max-width: 680px) {
+  .learning-fields, .layer-controls { grid-template-columns: minmax(0, 1fr); }
+  .network-diagram > div { width: 90px; }
+  .metric-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .metric-cards > div { padding: 13px 10px; border-bottom: 1px solid #e5eaf2; }
+  .metric-cards strong { font-size: 17px; }
+  .final-gate { padding: 25px 15px; }
+  .final-gate p { font-size: 11px; }
+  .check-field { font-size: 10px; }
+  .confusion-matrix strong { font-size: 23px; }
+  .confusion-matrix td { padding: 17px 9px; }
+  .experiments-link { position: absolute; right: 16px; top: 45px; margin-top: 0; font-size: 8px; padding: 3px 7px; }
+  .experiments-link > svg { width: 12px; }
+}

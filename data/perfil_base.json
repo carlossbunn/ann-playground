@@ -1,0 +1,189 @@
+{
+  "filename": "base_classificacao_binaria.csv",
+  "row_count": 10000,
+  "column_count": 13,
+  "columns": [
+    "sample_id",
+    "sensor_a",
+    "sensor_b",
+    "sensor_c",
+    "measurement_d",
+    "measurement_e",
+    "measurement_f",
+    "measurement_g",
+    "measurement_h",
+    "measurement_i",
+    "ratio_j",
+    "environment",
+    "target"
+  ],
+  "id_column": "sample_id",
+  "target_column": "target",
+  "categorical_features": [
+    "environment"
+  ],
+  "numeric_features": [
+    "sensor_a",
+    "sensor_b",
+    "sensor_c",
+    "measurement_d",
+    "measurement_e",
+    "measurement_f",
+    "measurement_g",
+    "measurement_h",
+    "measurement_i",
+    "ratio_j"
+  ],
+  "target_distribution": {
+    "0": 5000,
+    "1": 5000
+  },
+  "environment_distribution_including_missing": {
+    "(ausente)": 598,
+    "cold": 3141,
+    "hot": 3130,
+    "mild": 3131
+  },
+  "missing_by_column": {
+    "sample_id": {
+      "count": 0,
+      "percent": 0.0
+    },
+    "sensor_a": {
+      "count": 414,
+      "percent": 4.14
+    },
+    "sensor_b": {
+      "count": 1192,
+      "percent": 11.92
+    },
+    "sensor_c": {
+      "count": 693,
+      "percent": 6.93
+    },
+    "measurement_d": {
+      "count": 911,
+      "percent": 9.11
+    },
+    "measurement_e": {
+      "count": 468,
+      "percent": 4.68
+    },
+    "measurement_f": {
+      "count": 1011,
+      "percent": 10.11
+    },
+    "measurement_g": {
+      "count": 603,
+      "percent": 6.03
+    },
+    "measurement_h": {
+      "count": 855,
+      "percent": 8.55
+    },
+    "measurement_i": {
+      "count": 1526,
+      "percent": 15.26
+    },
+    "ratio_j": {
+      "count": 1061,
+      "percent": 10.61
+    },
+    "environment": {
+      "count": 598,
+      "percent": 5.98
+    },
+    "target": {
+      "count": 0,
+      "percent": 0.0
+    }
+  },
+  "numeric_summary": {
+    "sensor_a": {
+      "n": 9586,
+      "min": -3.7116983125213183,
+      "max": 24.63416957205521,
+      "mean": 10.025793,
+      "median": 10.006519,
+      "negative_count": 54
+    },
+    "sensor_b": {
+      "n": 8808,
+      "min": -956.4094443690126,
+      "max": 3056.5023768750493,
+      "mean": 1003.400014,
+      "median": 1001.691263,
+      "negative_count": 47
+    },
+    "sensor_c": {
+      "n": 9307,
+      "min": -0.0026158395093378,
+      "max": 0.1022692957138448,
+      "mean": 0.050187,
+      "median": 0.05039,
+      "negative_count": 3
+    },
+    "measurement_d": {
+      "n": 9089,
+      "min": -3.6816187923497057,
+      "max": 5.864260330785079,
+      "mean": 1.097286,
+      "median": 0.998566,
+      "negative_count": 46
+    },
+    "measurement_e": {
+      "n": 9532,
+      "min": 42.00000008385637,
+      "max": 57.99999999318417,
+      "mean": 49.959058,
+      "median": 49.942568,
+      "negative_count": 0
+    },
+    "measurement_f": {
+      "n": 8989,
+      "min": -16.17409328774324,
+      "max": 17.59878443428132,
+      "mean": 0.988562,
+      "median": 0.465319,
+      "negative_count": 1156
+    },
+    "measurement_g": {
+      "n": 9397,
+      "min": -4.128291402003329,
+      "max": 3.7344748292362047,
+      "mean": -0.001884,
+      "median": -0.001818,
+      "negative_count": 4708
+    },
+    "measurement_h": {
+      "n": 9145,
+      "min": -4.22335770975636,
+      "max": 3.424576149936198,
+      "mean": 0.001005,
+      "median": 0.001211,
+      "negative_count": 4565
+    },
+    "measurement_i": {
+      "n": 8474,
+      "min": -4.22712797633266,
+      "max": 3.732433091849696,
+      "mean": -0.012059,
+      "median": -0.005262,
+      "negative_count": 4263
+    },
+    "ratio_j": {
+      "n": 8939,
+      "min": -25.95570198283471,
+      "max": 28.401187274044627,
+      "mean": 1.625558,
+      "median": 1.014527,
+      "negative_count": 39
+    }
+  },
+  "duplicate_ids": 0,
+  "notes": [
+    "Perfil obtido por leitura do CSV original.",
+    "Valores de tipo não devem ser inferidos como propriedades físicas sem documentação.",
+    "A distribuição de target usa rótulos 0/1; classes não têm significado de domínio informado."
+  ]
+}
