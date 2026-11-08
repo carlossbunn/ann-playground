@@ -210,6 +210,16 @@ def test_preview_reports_training_stats_samples_and_reproducible_manifest(client
     assert comparison["samples"][0]["before"] is None
     assert comparison["imputed_stats"]["missing"] == 0
     assert comparison["scaled_stats"]["std"] == pytest.approx(1)
+    assert comparison["scaled_stats"]["mean"] == pytest.approx(0, abs=1e-12)
+    assert comparison["standard_scaler"]["mean"] == pytest.approx(
+        comparison["imputed_stats"]["mean"]
+    )
+    assert comparison["standard_scaler"]["std"] == pytest.approx(comparison["imputed_stats"]["std"])
+    for sample in comparison["samples"]:
+        scaler = comparison["standard_scaler"]
+        assert sample["scaled"] == pytest.approx(
+            (sample["imputed"] - scaler["mean"]) / scaler["scale"]
+        )
     assert sum(bar["count"] for bar in comparison["imputed_histogram"]) == 7000
     assert "pipeline.fit_transform(train[FEATURES])" in result["python_code"]
     assert "pipeline.transform(test" not in result["python_code"]
@@ -219,6 +229,8 @@ def test_preview_validation_uses_same_fitted_pipeline(client):
     train = client.post("/api/preprocessing/preview", json={}).json()
     val = client.post("/api/preprocessing/preview", json={"subset": "val"}).json()
     assert train["partition_fingerprints"] == val["partition_fingerprints"]
+    assert (train["numeric_before_after"][0]["standard_scaler"]
+            == val["numeric_before_after"][0]["standard_scaler"])
     assert val["numeric_before_after"][0]["scaled_stats"]["observed"] == 1500
     assert val["preview_subset"] == "val"
 

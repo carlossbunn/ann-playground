@@ -71,6 +71,15 @@ class DatasetService:
             "label_column": "target",
             "numeric_summary": summary,
             "duplicate_ids": int(df.sample_id.duplicated().sum()),
+            "quality": {
+                "duplicate_rows": int(df.duplicated().sum()),
+                "missing_rows": int(df[FEATURES].isna().any(axis=1).sum()),
+                "missing_ids": int(df.sample_id.isna().sum()),
+                "unexpected_environments": sorted(
+                    set(df.environment.dropna().astype(str)) - {"cold", "mild", "hot"}
+                ),
+                "numeric_types": {column: str(df[column].dtype) for column in NUMERIC_FEATURES},
+            },
             "sha256": self.file_hash,
             "scope": "global_descriptive",
         }

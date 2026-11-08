@@ -18,6 +18,8 @@ type Props = {
   activeId: string
   onActive: (id: string) => void
   navigate: (step: number) => void
+  preset: () => void
+  presetBusy: boolean
 }
 
 function NumericField({ id, label, value, min, max, step = 1, change }: {
@@ -28,9 +30,9 @@ function NumericField({ id, label, value, min, max, step = 1, change }: {
 }
 
 function ExportLinks({ run }: { run: Experiment }) {
-  return <div className="export-links" aria-label="Exportar experimento">
+  return <><div className="export-links" aria-label="Exportar experimento">
     <Download size={16} /><strong>Exportar</strong>{(['markdown', 'json', 'csv', 'python'] as const).map((format) => <a key={format} href={`/api/experiments/${run.id}/export?format=${format}`} download>{({ markdown: 'Relatório', json: 'JSON', csv: 'Histórico CSV', python: 'Python' })[format]}</a>)}
-  </div>
+  </div><p className="caption">Para gerar figuras Matplotlib, baixe o JSON e execute o comando indicado no README, na seção “Gráficos com Matplotlib”. A matriz usa apenas o teste já realizado.</p></>
 }
 
 function LearningCurves({ runs }: { runs: Experiment[] }) {
@@ -75,7 +77,8 @@ function LearningCurves({ runs }: { runs: Experiment[] }) {
 }
 
 function MetricCards({ metrics, title }: { metrics: ClassificationMetrics; title: string }) {
-  return <section className="metric-cards" aria-label={title}>{(['accuracy', 'precision', 'recall', 'f1', 'specificity'] as const).map((key) => <div key={key}><span>{{ accuracy: 'Acurácia', precision: 'Precisão', recall: 'Recall', f1: 'F1', specificity: 'Especificidade' }[key]}</span><strong>{number(metrics[key] * 100)}%</strong></div>)}</section>
+  const vpn = metrics.tn + metrics.fn ? metrics.tn / (metrics.tn + metrics.fn) : 0
+  return <section className="metric-cards" aria-label={title}>{(['accuracy', 'precision', 'recall', 'f1', 'specificity'] as const).map((key) => <div key={key}><span>{{ accuracy: 'Acurácia', precision: 'Precisão', recall: 'Recall', f1: 'F1', specificity: 'Especificidade' }[key]}</span><strong>{number(metrics[key] * 100)}%</strong></div>)}<div><span>Valor preditivo negativo</span><strong>{number(vpn * 100)}%</strong></div></section>
 }
 
 function RunResults({ run }: { run: Experiment }) {
@@ -100,6 +103,7 @@ function FinalResult({ result }: { result: ClassificationMetrics }) {
     ['Precisão', 'TP / (TP + FP)', result.tp, result.tp + result.fp, result.precision],
     ['Recall', 'TP / (TP + FN)', result.tp, result.tp + result.fn, result.recall],
     ['Especificidade', 'TN / (TN + FP)', result.tn, result.tn + result.fp, result.specificity],
+    ['Valor preditivo negativo', 'TN / (TN + FN)', result.tn, result.tn + result.fn, result.tn + result.fn ? result.tn / (result.tn + result.fn) : 0],
     ['F1', '2TP / (2TP + FP + FN)', 2 * result.tp, 2 * result.tp + result.fp + result.fn, result.f1],
   ] as const
   return <>
@@ -107,12 +111,13 @@ function FinalResult({ result }: { result: ClassificationMetrics }) {
       <div className="confusion-scroll"><table className="confusion-matrix"><caption>Linhas: classe real · colunas: classe prevista</caption><thead><tr><th scope="col">Real ↓ / Previsto →</th><th scope="col">Classe 0</th><th scope="col">Classe 1</th></tr></thead><tbody><tr><th scope="row">Classe 0</th><td className="correct" title="Negativos classificados corretamente"><strong>{number(result.tn, 0)}</strong><span>TN · verdadeiro negativo</span></td><td className="incorrect" title="Classe 0 prevista como 1"><strong>{number(result.fp, 0)}</strong><span>FP · falso positivo</span></td></tr><tr><th scope="row">Classe 1</th><td className="incorrect" title="Classe 1 prevista como 0"><strong>{number(result.fn, 0)}</strong><span>FN · falso negativo</span></td><td className="correct" title="Positivos classificados corretamente"><strong>{number(result.tp, 0)}</strong><span>TP · verdadeiro positivo</span></td></tr></tbody></table></div>
       <MetricCards metrics={result} title="Métricas finais do teste" />
       <div className="table-scroll" tabIndex={0} role="region" aria-label="Fórmulas das métricas finais"><table className="data-table"><thead><tr><th scope="col">Métrica</th><th scope="col">Fórmula</th><th scope="col">Cálculo</th><th scope="col">Resultado</th></tr></thead><tbody>{formulas.map(([name, formula, numerator, denominator, value]) => <tr key={name}><th scope="row">{name}</th><td>{formula}</td><td>({numerator}) / {denominator}</td><td>{number(value * 100)}%</td></tr>)}</tbody></table></div>
-      <p className="caption">Quando o denominador é zero, a métrica é apresentada como 0 e identificada como indefinida. {result.undefined_metrics.length > 0 ? `Métricas indefinidas: ${result.undefined_metrics.join(', ')}.` : 'Nenhuma métrica ficou indefinida neste resultado.'} Classes e unidades físicas não têm significado de domínio informado.</p>
+      <p className="caption">Falso positivo (FP) é erro tipo I; falso negativo (FN) é erro tipo II. O valor preditivo negativo mede a proporção de negativos previstos que são realmente negativos.</p>
+      <p className="caption">Quando o denominador é zero, a métrica é apresentada como 0 e identificada como indefinida. {Array.from(new Set([...result.undefined_metrics, ...(result.tn + result.fn === 0 ? ['negative_predictive_value'] : [])])).length > 0 ? `Métricas indefinidas: ${Array.from(new Set([...result.undefined_metrics, ...(result.tn + result.fn === 0 ? ['negative_predictive_value'] : [])])).join(', ')}.` : 'Nenhuma métrica ficou indefinida neste resultado.'} Classes e unidades físicas não têm significado de domínio informado.</p>
     </section>
   </>
 }
 
-export default function Learning({ step, settings, onSettings, draft, onDraft, activeId, onActive, navigate }: Props) {
+export default function Learning({ step, settings, onSettings, draft, onDraft, activeId, onActive, navigate, preset, presetBusy }: Props) {
   const client = useQueryClient()
   const [compared, setCompared] = useState<string[]>([])
   const [criterion, setCriterion] = useState<'loss' | 'predictive_loss'>('loss')
@@ -152,6 +157,7 @@ export default function Learning({ step, settings, onSettings, draft, onDraft, a
     {studyQuery.isError && <ErrorState error={studyQuery.error} retry={() => void studyQuery.refetch()} />}
     {study?.preprocess && <Notice><LockKeyhole size={15} /><strong>Divisão reservada neste ciclo:</strong> seed {study.preprocess.seed}, {study.preprocess.split_strategy === '70_15_15' ? '70/15/15' : '64/16/20'}, coorte {study.preprocess.missing_strategy === 'drop' ? 'completa (remoção)' : 'sem remoção'}. Novos treinos devem manter essas partições. {study.status !== 'open' && 'O teste já foi aberto; novos treinos e trocas de seleção estão encerrados.'}</Notice>}
     {[6, 7, 8].includes(step) && <>
+      <section className="panel"><h2>Modelo pronto</h2><p>Configura mediana, StandardScaler, MLP 32/16 com ReLU e Adam, até 100 épocas e early stopping. Preserva as partições já reservadas; se a coorte usa remoção, mantém a remoção.</p><button className="button secondary" disabled={presetBusy || trainMutation.isPending} onClick={preset}><Play size={16} />{presetBusy ? 'Iniciando treino…' : 'Usar modelo pronto e treinar'}</button></section>
       <section className="panel learning-controls"><div className="panel-heading"><div><h2>Rascunho do próximo experimento</h2><p>{missingNames[settings.missing_strategy]} · {scalerNames[settings.scaler]} · seed do split {settings.seed}. Altere a preparação nas etapas 3–5.</p></div></div>
         <div className="field"><label htmlFor="experiment-name">Nome do experimento</label><input id="experiment-name" maxLength={100} value={draft.name} onChange={(event) => onDraft({ ...draft, name: event.target.value })} /></div>
         {step === 6 && <>
@@ -175,15 +181,19 @@ export default function Learning({ step, settings, onSettings, draft, onDraft, a
       {dirty && <Notice tone="amber">O rascunho mudou. Os resultados exibidos abaixo pertencem a <strong>{active.config.name}</strong> e à configuração salva desse treino. Inicie um novo experimento para medir as alterações.</Notice>}
     </>}
     {step === 6 && <>
+      <Notice><strong>Etapa 6 do PDF — construção da MLP.</strong> O backend cria um keras.Sequential com entrada, camadas Dense ocultas e saída sigmoid. Os parâmetros são aprendidos no treino.</Notice>
+      {modelQuery.data && <PythonCode code={`import tensorflow as tf\n\nmodel = tf.keras.Sequential([\n    tf.keras.Input(shape=(${modelQuery.data.input_features},)),\n${draft.model.hidden_layers.map((units) => `    tf.keras.layers.Dense(${units}, activation="${draft.model.activation}", kernel_regularizer=tf.keras.regularizers.l2(${draft.model.l2})),`).join('\n')}\n    tf.keras.layers.Dense(1, activation="sigmoid"),\n])\nmodel.summary()`} />}
       {modelQuery.isPending && valid ? <Loading /> : modelQuery.isError ? <ErrorState error={modelQuery.error} retry={() => void modelQuery.refetch()} /> : modelQuery.data && valid && <section className="panel"><div className="panel-heading"><div><h2>Da entrada à probabilidade</h2><p>Dimensão calculada pelo pipeline real: {modelQuery.data.input_features} atributos de entrada.</p></div><Network size={20} /></div><div className="network-diagram"><div><strong>{modelQuery.data.input_features}</strong><span>Entrada</span></div>{modelQuery.data.layers.map((layer, index) => <div key={layer.name}><strong>{layer.units}</strong><span>{index === modelQuery.data.layers.length - 1 ? 'Saída sigmoid' : `${layer.activation} · oculta ${index + 1}`}</span></div>)}</div><p className="caption">Cada bloco representa uma camada; o número indica seus neurônios. Uma única saída sigmoid é suficiente para prever a classe 1 versus a classe 0.</p><div className="parameter-total"><strong>{number(modelQuery.data.total_parameters, 0)}</strong> parâmetros treináveis</div><div className="table-scroll" tabIndex={0} role="region" aria-label="Resumo da arquitetura"><table className="data-table"><thead><tr><th scope="col">Camada</th><th scope="col">Entrada</th><th scope="col">Neurônios</th><th scope="col">Ativação</th><th scope="col">Parâmetros</th></tr></thead><tbody>{modelQuery.data.layers.map((layer) => <tr key={layer.name}><th scope="row">{layer.name}</th><td>{layer.inputs}</td><td>{layer.units}</td><td>{layer.activation}</td><td>{number(layer.parameters, 0)}</td></tr>)}</tbody></table></div><p className="caption">Por camada densa: (entradas + 1 bias) × neurônios. O treinador verifica essa contagem com model.count_params() do Keras.</p></section>}
       <Quiz question="Por que uma saída sigmoid basta para duas classes?" options={['Ela produz um score para a classe 1', 'Cada classe exige uma camada oculta']} correct={0} explanation="O limiar converte o score em classe 0 ou 1. O score não é uma certeza sobre o resultado." />
     </>}
     {step === 7 && <>
+      <section className="panel"><h2>Como a rede aprende</h2><p><strong>Forward propagation:</strong> cada lote passa pela entrada e pelas camadas até gerar predições; a função de perda compara essas predições aos rótulos.</p><p><strong>Backpropagation:</strong> o Keras calcula gradientes da perda em relação aos pesos. O otimizador usa esses gradientes e o learning rate para atualizá-los. Uma época percorre os lotes do treino; a validação mede o modelo sem atualizar seus pesos.</p></section>
       {runs.length > 0 && <div className="field active-run-selector"><label htmlFor="active-run">Experimento exibido</label><select id="active-run" value={active?.id ?? ''} onChange={(event) => onActive(event.target.value)}>{runs.map((run) => <option key={run.id} value={run.id}>{run.config.name} · {statusNames[run.status]} · {run.id.slice(0, 8)}</option>)}</select></div>}
       {runsQuery.isPending ? <Loading /> : runsQuery.isError ? <ErrorState error={runsQuery.error} retry={() => void runsQuery.refetch()} /> : active ? <RunResults run={active} /> : <section className="panel empty-learning"><Play size={28} /><h2>Seu primeiro treino começa aqui</h2><p>Escolha os parâmetros e clique em “Treinar novo experimento”. As curvas serão produzidas pelo Keras.</p></section>}
       <Quiz question="Acurácia alta no treino garante bom desempenho em novos dados?" options={['Sim, basta medir o treino', 'Não, preciso observar a validação']} correct={1} explanation="O modelo pode memorizar o treino. A validação ajuda a observar a capacidade de generalizar sem abrir o teste." />
     </>}
     {[8, 10].includes(step) && <>
+      {step === 8 && <section className="panel"><h2>Etapa 8 — interprete as curvas</h2><p>Se a perda de treino cai enquanto a de validação sobe, pode haver overfitting. Se ambas continuam altas, investigue underfitting. Uma estabilização pode indicar convergência, mas não garante um bom modelo.</p><p>Early stopping interrompe o treino quando a perda de validação deixa de melhorar; L2 penaliza pesos grandes. Compare experimentos na mesma partição antes de escolher.</p></section>}
       <section className="panel experiments-panel"><div className="panel-heading"><div><h2>Experimentos salvos</h2><p>Selecione até quatro curvas para comparar. Cada linha mantém sua configuração original.</p></div><button className="icon-button" aria-label="Atualizar experimentos" onClick={refresh}><RefreshCw size={16} /></button></div>
         <div className="field ranking-field"><label htmlFor="ranking">Ordenar pela validação</label><select id="ranking" value={criterion} onChange={(event) => setCriterion(event.target.value as typeof criterion)}><option value="loss">val_loss do modelo salvo (inclui L2)</option><option value="predictive_loss">Perda preditiva (sem L2)</option></select></div>
         {runsQuery.isPending ? <Loading /> : runsQuery.isError ? <ErrorState error={runsQuery.error} retry={() => void runsQuery.refetch()} /> : !runs.length ? <div className="empty-learning"><FlaskConical size={28} /><h3>Nenhum experimento salvo ainda</h3><p>Treine na etapa 7 para comparar evidências reais.</p><button className="button primary" onClick={() => navigate(7)}>Ir ao treinamento<ArrowRight size={15} /></button></div> : <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela de experimentos"><table className="data-table experiment-table"><thead><tr><th scope="col">Comparar</th><th scope="col">Experimento / configuração</th><th scope="col">Estado</th><th scope="col">val_loss</th><th scope="col">Perda preditiva</th><th scope="col">Acurácia val.</th><th scope="col">Ações</th></tr></thead><tbody>{[...runs].sort((a, b) => (a.validation_metrics?.[criterion] ?? Infinity) - (b.validation_metrics?.[criterion] ?? Infinity)).map((run) => <tr key={run.id}><td><input type="checkbox" aria-label={`Comparar ${run.config.name}`} checked={compared.includes(run.id)} disabled={!run.history.length || (!compared.includes(run.id) && compared.length >= 4)} onChange={(event) => setCompared(event.target.checked ? [...compared, run.id] : compared.filter((id) => id !== run.id))} /></td><th scope="row"><strong>{run.config.name}</strong><small>[{run.config.model.hidden_layers.join(', ')}] · {run.config.model.optimizer} · L2 {run.config.model.l2}</small><small>{missingNames[run.config.preprocess.missing_strategy]} · {scalerNames[run.config.preprocess.scaler]} · seed {run.config.preprocess.seed} · {run.completed_epochs} épocas</small></th><td>{statusNames[run.status]}</td><td>{run.validation_metrics ? number(run.validation_metrics.loss, 6) : 'Pendente'}</td><td>{run.validation_metrics ? number(run.validation_metrics.predictive_loss, 6) : 'Pendente'}</td><td>{run.validation_metrics ? `${number(run.validation_metrics.accuracy * 100)}%` : 'Pendente'}</td><td><div className="run-actions"><button onClick={() => { onActive(run.id); navigate(7) }}>Ver treino</button><button onClick={() => copyRun(run)}>Usar como base</button><button disabled={run.status !== 'completed' || study?.status !== 'open' || selectMutation.isPending} onClick={() => selectMutation.mutate(run.id)}>{study?.selected_experiment_id === run.id ? 'Selecionado para teste' : 'Selecionar para teste'}</button></div></td></tr>)}</tbody></table></div>}

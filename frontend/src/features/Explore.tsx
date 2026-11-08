@@ -6,7 +6,7 @@ import { get, number } from '../lib/api'
 import { BoxPlot, CorrelationHeatmap, Distribution } from '../components/Charts'
 import { ErrorState, Loading, Notice, PythonCode, Quiz } from '../components/UI'
 
-type Tab = 'distribution' | 'missing' | 'correlations'
+type Tab = 'distribution' | 'missing' | 'correlations' | 'quality'
 
 function Missing({ profile }: { profile: Profile }) {
   const [sort, setSort] = useState(true)
@@ -43,7 +43,7 @@ export default function Explore({ profile, back, next }: { profile: Profile; bac
   const isNumeric = profile.numeric_columns.includes(column)
   const stats = profile.numeric_summary[column]
   const baseCode = 'from pathlib import Path\nimport pandas as pd\n\ndf = pd.read_csv(Path("data/base_classificacao_binaria.csv"))\n'
-  const code = tab === 'missing' ? `${baseCode}\nmissing = pd.DataFrame({\n    "count": df.isna().sum(),\n    "percent": df.isna().mean() * 100,\n})\nprint(missing.sort_values("percent", ascending=False))`
+  const code = tab === 'quality' ? `${baseCode}\nprint("Linhas duplicadas:", df.duplicated().sum())\nprint("IDs duplicados:", df.sample_id.duplicated().sum())\nprint("Tipos:", df.dtypes)\nprint("Categorias:", df.environment.dropna().unique())` : tab === 'missing' ? `${baseCode}\nmissing = pd.DataFrame({\n    "count": df.isna().sum(),\n    "percent": df.isna().mean() * 100,\n})\nprint(missing.sort_values("percent", ascending=False))`
     : tab === 'correlations' ? `${baseCode}\nnumeric = df.drop(columns=["sample_id", "target"]).select_dtypes("number")\nprint(numeric.corr(method="pearson"))\npresent = numeric.notna().astype(int)\nprint(present.T @ present)  # número de pares válidos`
     : isNumeric ? `${baseCode}\nimport numpy as np\n\nvalues = df["${column}"].dropna()\ncounts, edges = np.histogram(values, bins=${bins})\nq1, median, q3 = values.quantile([0.25, 0.5, 0.75])\niqr = q3 - q1\ninliers = values[values.between(q1 - 1.5 * iqr, q3 + 1.5 * iqr)]\nprint(counts, edges)\nprint(q1, median, q3)\nprint(inliers.min(), inliers.max())\nprint("Outliers:", len(values) - len(inliers))`
     : `${baseCode}\nprint(df["${column}"].fillna("(ausente)").astype(str).value_counts().sort_index())`
@@ -54,6 +54,7 @@ export default function Explore({ profile, back, next }: { profile: Profile; bac
       <button aria-pressed={tab === 'distribution'} onClick={() => setTab('distribution')}><ChartNoAxesCombined size={17} />Distribuições</button>
       <button aria-pressed={tab === 'missing'} onClick={() => setTab('missing')}><ScanLine size={17} />Dados faltantes</button>
       <button aria-pressed={tab === 'correlations'} onClick={() => setTab('correlations')}><Grid2X2 size={17} />Correlações</button>
+      <button aria-pressed={tab === 'quality'} onClick={() => setTab('quality')}><ScanLine size={17} />Inconsistências</button>
     </div>
     {tab === 'distribution' && <>
       <section className="panel">
@@ -78,6 +79,13 @@ export default function Explore({ profile, back, next }: { profile: Profile; bac
     </>}
     {tab === 'missing' && <Missing profile={profile} />}
     {tab === 'correlations' && <CorrelationsPanel />}
+    {tab === 'quality' && <section className="panel"><h2>Diagnóstico de inconsistências</h2><p>Verificações descritivas sobre o CSV inteiro, sem alterar os dados.</p><ul>
+      <li>Linhas integralmente duplicadas: {number(profile.quality.duplicate_rows, 0)}</li>
+      <li>Identificadores duplicados: {number(profile.duplicate_ids, 0)}; identificadores ausentes: {number(profile.quality.missing_ids, 0)}</li>
+      <li>Linhas com pelo menos um atributo ausente: {number(profile.quality.missing_rows, 0)}</li>
+      <li>Categorias de environment fora de cold, mild e hot: {profile.quality.unexpected_environments.join(', ') || 'nenhuma'}</li>
+      <li>Os atributos numéricos foram convertidos para números e verificados contra infinitos ao carregar o CSV; valores ausentes são tratados separadamente.</li>
+    </ul><details><summary>Tipos numéricos após a leitura</summary><ul>{Object.entries(profile.quality.numeric_types).map(([name, type]) => <li key={name}>{name}: {type}</li>)}</ul></details><Notice>Outliers e valores negativos não são automaticamente erros; consulte os boxplots e considere o contexto dos dados.</Notice></section>}
     <PythonCode code={code} />
     <Quiz question="Uma correlação alta prova que um atributo causa a classe?" options={['Sim, correlação é causa', 'Não, mostra apenas associação']} correct={1} explanation="Correlação mede associação linear. Ela não estabelece causa, e uma correlação baixa também não descarta relações não lineares." />
     <div className="step-footer"><button className="button secondary" onClick={back}><ArrowLeft size={16} />Entendimento do problema</button><button className="button primary" onClick={next}>Tratar os faltantes<ArrowRight size={16} /></button></div>

@@ -204,6 +204,7 @@ class PreprocessingService:
         } for i in indexes]
         numeric_pipeline = prepared.pipeline.named_transformers_["numeric"]
         fitted_imputer = numeric_pipeline.named_steps["imputer"]
+        fitted_scaler = numeric_pipeline.named_steps["scaler"]
         replacement = None
         if config.missing_strategy in ("mean", "median"):
             replacement = float(fitted_imputer.statistics_[position])
@@ -257,6 +258,11 @@ class PreprocessingService:
                 "column": config.column, "samples": samples,
                 "before_stats": statistics(raw), "imputed_stats": statistics(imputed),
                 "scaled_stats": statistics(scaled), "fitted_replacement": replacement,
+                "standard_scaler": {
+                    "mean": float(fitted_scaler.mean_[position]),
+                    "std": float(np.sqrt(fitted_scaler.var_[position])),
+                    "scale": float(fitted_scaler.scale_[position]),
+                } if config.scaler == "standard" else None,
                 "before_histogram": histogram(raw, config.bins),
                 "imputed_histogram": histogram(imputed, config.bins),
                 "scaled_histogram": histogram(scaled, config.bins),

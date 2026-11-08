@@ -14,6 +14,7 @@ export interface Profile {
     median: number | null; std: number | null; negative_count: number
   }>
   duplicate_ids: number
+  quality: { duplicate_rows: number; missing_rows: number; missing_ids: number; unexpected_environments: string[]; numeric_types: Record<string, string> }
   sha256: string
   scope: string
 }
@@ -93,6 +94,7 @@ export interface PreprocessingPreview {
     imputed_stats: PreparationStats
     scaled_stats: PreparationStats
     fitted_replacement: number | null
+    standard_scaler: { mean: number; std: number; scale: number } | null
     before_histogram: NonNullable<Eda['histogram']>
     imputed_histogram: NonNullable<Eda['histogram']>
     scaled_histogram: NonNullable<Eda['histogram']>

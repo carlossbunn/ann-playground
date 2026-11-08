@@ -17,9 +17,10 @@ from uuid import uuid4
 
 import joblib
 import numpy as np
+import pandas as pd
 import sklearn
 
-from app.services.dataset import FEATURES, DatasetService
+from app.services.dataset import FEATURES, NUMERIC_FEATURES, DatasetService
 from app.services.neural import (
     ExperimentConfig,
     batches,
@@ -151,6 +152,75 @@ class ExperimentService:
         if not self.worker.is_alive():
             fcntl.flock(self.process_lock, fcntl.LOCK_UN)
             self.process_lock.close()
+
+    def completed_run(self, run_id):
+        run = self.repo.get(run_id)
+        if run["status"] != "completed":
+            raise Conflict("Escolha um experimento concluído.")
+        if (self.dataset.file_hash != run["dataset_sha256"] or
+                sha256(self.dataset_path_bytes()).hexdigest() != run["dataset_sha256"]):
+            raise ValueError("O CSV mudou desde o treino. Restaure o arquivo original.")
+        return run
+
+    def inference_sample(self, run_id, subset, offset):
+        run = self.completed_run(run_id)
+        ids = run["partition_ids"][subset]
+        if offset < 0 or offset >= len(ids):
+            raise ValueError("A posição está fora do subconjunto escolhido.")
+        row = self.dataset.df.set_index("sample_id", drop=False).loc[ids[offset]]
+        return {
+            "subset": subset, "offset": offset, "total": len(ids),
+            "sample_id": str(row.sample_id),
+            "numeric": {name: None if pd.isna(row[name]) else float(row[name])
+                        for name in NUMERIC_FEATURES},
+            "environment": None if pd.isna(row.environment) else str(row.environment),
+        }
+
+    def predict_scenarios(self, run_id, scenarios):
+        run = self.completed_run(run_id)
+        if run["config"]["preprocess"]["missing_strategy"] == "drop" and any(
+            s["environment"] is None or any(v is None for v in s["numeric"].values())
+            for s in scenarios
+        ):
+            raise ValueError("Este modelo usa remoção: preencha todos os atributos.")
+        directory = self.repo.root / "artifacts" / run_id
+        with self.operation_lock:
+            for name in ("model.keras", "pipeline.joblib"):
+                digest = sha256((directory / name).read_bytes()).hexdigest()
+                if digest != run["artifact_hashes"][name]:
+                    raise ValueError("Um artefato não corresponde ao experimento salvo.")
+            pipeline = joblib.load(directory / "pipeline.joblib")
+            model = tf.keras.models.load_model(directory / "model.keras")
+            frame = pd.DataFrame([{**s["numeric"], "environment": s["environment"]}
+                                  for s in scenarios], columns=FEATURES)
+            frame[NUMERIC_FEATURES] = frame[NUMERIC_FEATURES].astype(float)
+            # SimpleImputer categórico foi ajustado com NaN, não None.
+            frame["environment"] = frame["environment"].fillna(np.nan)
+            transformed = pipeline.transform(frame)
+            numeric = pipeline.named_transformers_["numeric"]
+            imputer = numeric.named_steps["imputer"]
+            imputed = (imputer.transform(frame[NUMERIC_FEATURES]) if imputer != "passthrough"
+                       else frame[NUMERIC_FEATURES].to_numpy())
+            scores = probabilities(model, transformed)
+            scaler = numeric.named_steps["scaler"]
+            result = []
+            for index, score in enumerate(scores):
+                details = []
+                for position, name in enumerate(NUMERIC_FEATURES):
+                    entry = {"name": name, "original": scenarios[index]["numeric"][name],
+                             "imputed": float(imputed[index, position]),
+                             "scaled": float(transformed[index, position])}
+                    if hasattr(scaler, "mean_") and scaler.mean_ is not None:
+                        entry.update(mean=float(scaler.mean_[position]),
+                                     scale=float(scaler.scale_[position]))
+                    details.append(entry)
+                result.append({"score": float(score),
+                               "predicted_class": int(score >= run["config"]["threshold"]),
+                               "numeric": details,
+                               "encoded": [float(v) for v in transformed[index].tolist()]})
+        return {"scenarios": result, "threshold": run["config"]["threshold"],
+                "features": run["output_features"], "scaler": run["config"]["preprocess"]["scaler"],
+                "missing_strategy": run["config"]["preprocess"]["missing_strategy"]}
 
     def create(self, config: ExperimentConfig):
         parts = split_cohort(self.dataset.df, config.preprocess)
@@ -381,6 +451,20 @@ print(model.evaluate(batches(X_val, val.target, training.batch_size, training.se
 
 
 def export_run(run, format_name):
+    # Experimentos anteriores à inclusão do VPN também podem ser exportados.
+    run = dict(run)
+    for key in ("validation_metrics", "test_metrics"):
+        if run.get(key) is not None:
+            metrics = dict(run[key])
+            denominator = metrics["tn"] + metrics["fn"]
+            metrics["negative_predictive_value"] = (
+                metrics["tn"] / denominator if denominator else 0.0
+            )
+            undefined = list(metrics.get("undefined_metrics", []))
+            if not denominator and "negative_predictive_value" not in undefined:
+                undefined.append("negative_predictive_value")
+            metrics["undefined_metrics"] = undefined
+            run[key] = metrics
     if format_name == "python":
         return reproduction_code(run), "text/x-python", "py"
     if format_name == "csv":
@@ -395,6 +479,22 @@ def export_run(run, format_name):
     if format_name == "markdown":
         content = f"# ANN Lab — {run['config']['name']}\n\n"
         content += f"Experimento: {run['id']}\n\nStatus: {run['status']}\n\n"
+        content += (
+            "## Percurso das nove etapas\n\n"
+            "1. **Entendimento:** classificação supervisionada binária de target; "
+            "sample_id é identificador.\n"
+            "2. **EDA:** histogramas, boxplots e correlação descrevem o CSV completo.\n"
+            f"3. **Faltantes:** `{run['config']['preprocess']['missing_strategy']}`.\n"
+            f"4. **Escalonamento:** `{run['config']['preprocess']['scaler']}`.\n"
+            f"5. **Separação:** `{run['config']['preprocess']['split_strategy']}`; "
+            "contagens abaixo. "
+            "A opção 80/20 reserva validação dentro dos 80%.\n"
+            f"6. **MLP:** camadas ocultas {run['config']['model']['hidden_layers']}.\n"
+            f"7. **Treinamento:** otimizador {run['config']['model']['optimizer']}; "
+            f"{run['completed_epochs']} épocas registradas.\n"
+            "8. **Validação:** curvas no histórico CSV e métricas abaixo.\n"
+            "9. **Avaliação final:** métricas abaixo apenas se o teste já foi aberto.\n\n"
+        )
         content += (
             f"Épocas realizadas: {run['completed_epochs']} / "
             f"{run['config']['training']['epochs']}\n\n"
