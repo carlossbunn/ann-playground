@@ -55,7 +55,7 @@ def get_experiment(run_id: str, instance: Service):
 @router.get("/experiments/{run_id}/export")
 def export_experiment(
     run_id: str, instance: Service,
-    format: Literal["json", "markdown", "csv", "python"] = "json",
+    format: Literal["json", "markdown", "html", "csv", "python"] = "json",
 ):
     run = instance.repo.get(run_id)
     content, media_type, extension = export_run(run, format)

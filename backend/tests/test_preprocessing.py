@@ -51,6 +51,38 @@ def test_split_is_stratified_reproducible_and_disjoint(service, strategy, counts
     assert set(changed["train"].sample_id) != ids["train"]
 
 
+@pytest.mark.parametrize("percentages", [(60, 20, 20), (75, 10, 15), (65.5, 14.5, 20)])
+def test_custom_split_and_reproduction(service, percentages, monkeypatch):
+    from app.services.preprocessing import python_code
+
+    config = PreprocessingConfig(
+        split_strategy="custom", train_percent=percentages[0],
+        val_percent=percentages[1], test_percent=percentages[2],
+    )
+    parts = split_cohort(service.dataset.df, config)
+    repeated = split_cohort(service.dataset.df, config)
+    ids = [set(frame.sample_id) for frame in parts.values()]
+    assert len(set.union(*ids)) == sum(map(len, ids)) == 10000
+    for (key, frame), percentage in zip(parts.items(), percentages, strict=True):
+        assert len(frame) == pytest.approx(100 * percentage, abs=1)
+        assert frame.target.mean() == pytest.approx(0.5, abs=0.001)
+        assert frame.sample_id.tolist() == repeated[key].sample_id.tolist()
+    namespace = {}
+    monkeypatch.chdir(ROOT)
+    with redirect_stdout(StringIO()):
+        exec(compile(python_code(config), "custom_split.py", "exec"), namespace)
+    for key in parts:
+        assert namespace[key].sample_id.tolist() == parts[key].sample_id.tolist()
+
+
+@pytest.mark.parametrize("percentages", [(70, 20, 20), (0, 80, 20), (-10, 90, 20),
+                                         (100, 0, 0), (float("inf"), 15, 15)])
+def test_invalid_custom_percentages(percentages):
+    with pytest.raises(ValueError):
+        PreprocessingConfig(split_strategy="custom", train_percent=percentages[0],
+                            val_percent=percentages[1], test_percent=percentages[2])
+
+
 @pytest.mark.parametrize("strategy", ["drop", "mean", "median", "knn"])
 def test_real_strategies_produce_complete_features_without_changing_original(service, strategy):
     before = sha256(DEFAULT_CSV.read_bytes()).hexdigest()

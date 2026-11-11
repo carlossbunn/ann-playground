@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, GitBranch, LockKeyhole, RotateCcw, ShieldCheck } from 'lucide-react'
 import type { PreparationStats, PreprocessingPreview, PreprocessingSettings, Profile } from '../types'
 import { number, post } from '../lib/api'
-import { defaultSettings, missingNames, scalerNames } from '../lib/preprocessing'
+import { defaultSettings, missingNames, scalerNames, splitLabel } from '../lib/preprocessing'
+import SplitControls from '../components/SplitControls'
 import { Distribution } from '../components/Charts'
 import { ErrorState, Loading, Notice, PythonCode, Quiz } from '../components/UI'
 import './preparation.css'
@@ -178,8 +179,9 @@ export default function Preparation({ step, profile, settings, onChange, navigat
         <div className="field"><label htmlFor="preparation-column">Atributo para comparar</label><select id="preparation-column" value={column} onChange={(event) => setColumn(event.target.value)}>{profile.numeric_columns.map((name) => <option key={name}>{name}</option>)}</select></div>
         <div className="field"><label htmlFor="preview-subset">Visualizar subconjunto</label><select id="preview-subset" value={subset} onChange={(event) => setSubset(event.target.value as 'train' | 'val')}><option value="train">Treino · onde ocorre o fit</option><option value="val">Validação · apenas transform</option></select></div>
       </div>}
-      <div className="current-preparation"><Check size={14} /><span>{missingNames[settings.missing_strategy]} · {scalerNames[settings.scaler]} · {settings.split_strategy === '70_15_15' ? '70/15/15' : '64/16/20'} · seed {settings.seed}</span></div>
+      <div className="current-preparation"><Check size={14} /><span>{missingNames[settings.missing_strategy]} · {scalerNames[settings.scaler]} · {splitLabel(settings)} · seed {settings.seed}</span></div>
     </section>
+    {step === 5 && <SplitControls settings={settings} onChange={onChange} />}
     {query.isPending ? <Loading /> : query.isError ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : <>
       <div className="preparation-status" role="status">Prévia calculada · fit em {number(query.data.split_counts.train, 0)} amostras de treino · seed {query.data.config.seed}</div>
       {query.data.warnings.length > 0 && <Notice tone="amber"><ul className="preparation-warnings">{query.data.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></Notice>}

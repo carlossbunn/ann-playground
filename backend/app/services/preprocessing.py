@@ -9,7 +9,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import sklearn
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import KNNImputer, SimpleImputer
@@ -25,10 +25,26 @@ class PreparationSettings(BaseModel):
 
     missing_strategy: Literal["drop", "mean", "median", "knn"] = "median"
     scaler: Literal["standard", "minmax", "none"] = "standard"
-    split_strategy: Literal["70_15_15", "80_20"] = "70_15_15"
+    split_strategy: Literal["70_15_15", "80_20", "custom"] = "70_15_15"
+    train_percent: float = Field(default=70, gt=0, lt=100, allow_inf_nan=False)
+    val_percent: float = Field(default=15, gt=0, lt=100, allow_inf_nan=False)
+    test_percent: float = Field(default=15, gt=0, lt=100, allow_inf_nan=False)
     seed: int = Field(default=42, ge=0, le=2**32 - 1, strict=True)
     knn_neighbors: Literal[3, 5, 7] = 5
     categorical_strategy: Literal["most_frequent", "constant"] = "most_frequent"
+
+    @model_validator(mode="after")
+    def valid_percentages(self):
+        if self.split_strategy == "custom" and abs(
+            self.train_percent + self.val_percent + self.test_percent - 100
+        ) > 1e-8:
+            raise ValueError("Os percentuais de treino, validação e teste devem somar 100%.")
+        return self
+
+    def split_percentages(self):
+        if self.split_strategy == "custom":
+            return self.train_percent, self.val_percent, self.test_percent
+        return (70, 15, 15) if self.split_strategy == "70_15_15" else (64, 16, 20)
 
     def pipeline_settings(self) -> dict:
         return self.model_dump()
@@ -99,12 +115,13 @@ def split_cohort(df: pd.DataFrame, config: PreprocessingConfig) -> dict[str, pd.
     cohort = df.dropna(subset=FEATURES) if config.missing_strategy == "drop" else df
     if len(cohort) < 20 or cohort.target.value_counts().min() < 5:
         raise ValueError("A coorte é pequena demais para três partições estratificadas.")
-    test_size = 0.15 if config.split_strategy == "70_15_15" else 0.2
+    _, val_percent, test_percent = config.split_percentages()
+    test_size = test_percent / 100
     try:
         remaining, test = train_test_split(
             cohort, test_size=test_size, stratify=cohort.target, random_state=config.seed,
         )
-        val_size = 0.15 / 0.85 if config.split_strategy == "70_15_15" else 0.2
+        val_size = val_percent / (100 - test_percent)
         train, val = train_test_split(
             remaining, test_size=val_size, stratify=remaining.target, random_state=config.seed,
         )
@@ -292,8 +309,9 @@ class PreprocessingService:
 
 
 def python_code(config: PreprocessingConfig) -> str:
-    test_size = 0.15 if config.split_strategy == "70_15_15" else 0.2
-    val_size = "0.15 / 0.85" if config.split_strategy == "70_15_15" else "0.2"
+    _, val_percent, test_percent = config.split_percentages()
+    test_size = test_percent / 100
+    val_size = val_percent / (100 - test_percent)
     filtering = "df.dropna(subset=FEATURES)" if config.missing_strategy == "drop" else "df"
     return f'''from pathlib import Path
 import sys

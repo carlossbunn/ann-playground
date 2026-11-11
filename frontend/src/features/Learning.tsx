@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, Download, FlaskConical, LockKeyhole, Network, Play, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ClassificationMetrics, Experiment, LearningDraft, ModelDescription, PreprocessingSettings, Study } from '../types'
 import { get, number, post } from '../lib/api'
 import { configurationSignature, statusNames, validLearning } from '../lib/learning'
-import { missingNames, scalerNames } from '../lib/preprocessing'
+import { missingNames, scalerNames, splitLabel } from '../lib/preprocessing'
 import { ErrorState, Loading, Notice, PythonCode, Quiz } from '../components/UI'
 import './learning.css'
 
@@ -28,13 +28,20 @@ function NumericField({ id, label, value, min, max, step = 1, change }: {
 }
 
 function ExportLinks({ run }: { run: Experiment }) {
-  return <div className="export-links" aria-label="Exportar experimento">
-    <Download size={16} /><strong>Exportar</strong>{(['markdown', 'json', 'csv', 'python'] as const).map((format) => <a key={format} href={`/api/experiments/${run.id}/export?format=${format}`} download>{({ markdown: 'Relatório', json: 'JSON', csv: 'Histórico CSV', python: 'Python' })[format]}</a>)}
-  </div>
+  const reportName = run.test_metrics ? 'Relatório final' : 'Relatório parcial'
+  return <>
+    {!run.test_metrics && <p className="caption">Relatório parcial: a tabela de Precision, Recall, F1-score, Support, Acurácia, Média macro, Média ponderada e a matriz de confusão usam os resultados de validação. Para obter os resultados do teste, selecione o modelo pela validação na etapa 8, conclua a avaliação na etapa 9 e exporte novamente.</p>}
+    <div className="export-links" aria-label="Exportar experimento">
+      <Download size={16} /><strong>Exportar</strong>{(['html', 'markdown', 'json', 'csv', 'python'] as const).map((format) => <a key={format} href={`/api/experiments/${run.id}/export?format=${format}`} download>{({ html: `${reportName} HTML`, markdown: `${reportName} Markdown`, json: 'JSON', csv: 'Histórico CSV', python: 'Python' })[format]}</a>)}
+    </div>
+  </>
 }
 
 function LearningCurves({ runs }: { runs: Experiment[] }) {
-  const [metric, setMetric] = useState<'loss' | 'accuracy'>('loss')
+  return <div className="learning-curves"><LearningCurve runs={runs} metric="accuracy" /><LearningCurve runs={runs} metric="loss" /></div>
+}
+
+function LearningCurve({ runs, metric }: { runs: Experiment[]; metric: 'accuracy' | 'loss' }) {
   const colors = ['#315ddb', '#107b73', '#a34a30', '#7a48ac']
   const length = Math.max(0, ...runs.map((run) => run.history.length))
   if (!length) return <div className="empty-learning"><Network size={25} /><h3>Aguardando a primeira época</h3><p>As curvas aparecem somente quando o backend registrar resultados reais.</p></div>
@@ -47,18 +54,19 @@ function LearningCurves({ runs }: { runs: Experiment[] }) {
     return point
   })
   return <>
-    <div className="curve-tabs" role="group" aria-label="Métrica das curvas"><button aria-pressed={metric === 'loss'} onClick={() => setMetric('loss')}>Perda (loss)</button><button aria-pressed={metric === 'accuracy'} onClick={() => setMetric('accuracy')}>Acurácia</button></div>
+    <h3>Curva de aprendizado — {metric === 'accuracy' ? 'Acurácia × Épocas' : 'Loss × Épocas'}</h3>
     <div className="learning-chart" role="img" aria-label={`Curvas reais de ${metric === 'loss' ? 'perda' : 'acurácia'} de ${runs.length} experimento(s), até ${length} épocas. Linha contínua: treino; tracejada: validação.`}>
       <ResponsiveContainer width="100%" height={320}><LineChart data={points} margin={{ top: 14, right: 20, left: 0, bottom: 20 }}>
         <CartesianGrid strokeDasharray="3 4" stroke="#e5eaf2" /><XAxis dataKey="epoch" allowDecimals={false} label={{ value: 'Época', position: 'bottom', fontSize: 11 }} tick={{ fontSize: 10 }} />
-        <YAxis domain={metric === 'accuracy' ? [0, 1] : ['auto', 'auto']} tick={{ fontSize: 10 }} tickFormatter={(value: number) => number(value, 3)} width={50} />
-        <Tooltip formatter={(value) => number(Number(value), 6)} labelFormatter={(label) => `Época ${label}`} />
+        <YAxis domain={metric === 'accuracy' ? [0, 1] : ['auto', 'auto']} label={{ value: metric === 'accuracy' ? 'Acurácia (%)' : 'Loss', angle: -90, position: 'insideLeft', fontSize: 10 }} tick={{ fontSize: 10 }} tickFormatter={(value: number) => metric === 'accuracy' ? `${number(value * 100, 0)}%` : number(value, 3)} width={70} />
+        <Tooltip formatter={(value) => metric === 'accuracy' ? `${number(Number(value) * 100)}%` : number(Number(value), 6)} labelFormatter={(label) => `Época ${label}`} />
         <Legend wrapperStyle={{ fontSize: 10 }} verticalAlign="top" />
+        {runs.map((run, index) => run.saved_epoch && <ReferenceLine key={run.id} x={run.saved_epoch} stroke={colors[index % colors.length]} strokeDasharray="3 4" label={{ value: `Pesos salvos: ${run.saved_epoch}`, fontSize: 10, position: 'insideTopRight' }} />)}
         {runs.flatMap((run, index) => [<Line key={`${run.id}_train`} dataKey={`${run.id}_train`} name={`${run.config.name} · treino`} stroke={colors[index % colors.length]} strokeWidth={2} dot={length <= 3} isAnimationActive={false} />, <Line key={`${run.id}_val`} dataKey={`${run.id}_val`} name={`${run.config.name} · validação`} stroke={colors[index % colors.length]} strokeWidth={2} strokeDasharray="6 4" dot={length <= 3} isAnimationActive={false} />])}
       </LineChart></ResponsiveContainer>
     </div>
     <p className="caption">Cada ponto é uma época daquele experimento. Loss inclui a penalização L2 quando habilitada. A tabela de validação também mostra a perda preditiva sem penalização.</p>
-    {runs.map((run) => {
+    {metric === 'loss' && runs.map((run) => {
       const last = run.history.at(-1)
       if (!last || run.history.length < 5) return null
       const previousBest = Math.min(...run.history.slice(0, -2).map((epoch) => epoch.val_loss))
@@ -94,7 +102,7 @@ function RunResults({ run }: { run: Experiment }) {
   </section>
 }
 
-function FinalResult({ result }: { result: ClassificationMetrics }) {
+function FinalResult({ result, run }: { result: ClassificationMetrics; run?: Experiment }) {
   const formulas = [
     ['Acurácia', '(TP + TN) / total', `${result.tp} + ${result.tn}`, result.samples, result.accuracy],
     ['Precisão', 'TP / (TP + FP)', result.tp, result.tp + result.fp, result.precision],
@@ -103,6 +111,19 @@ function FinalResult({ result }: { result: ClassificationMetrics }) {
     ['F1', '2TP / (2TP + FP + FN)', 2 * result.tp, 2 * result.tp + result.fp + result.fn, result.f1],
   ] as const
   return <>
+    {run && <section className="panel"><div className="panel-heading"><div><h2>Resumo do desempenho do modelo salvo</h2><p>Divisão {splitLabel(run.config.preprocess)}% · seed {run.config.preprocess.seed} · pesos da época {run.saved_epoch}.</p></div></div>
+      <div className="table-scroll"><table className="data-table"><thead><tr><th scope="col">Conjunto</th><th scope="col">Accuracy</th><th scope="col">Loss</th><th scope="col">Perda preditiva</th><th scope="col">Amostras</th></tr></thead><tbody>
+        {([['Treino', run.train_metrics, run.split_counts.train], ['Validação', run.validation_metrics, run.split_counts.val], ['Teste', result, run.split_counts.test]] as const).map(([label, metrics, count]) => <tr key={label}><th scope="row">{label}</th><td>{metrics ? `${number(metrics.accuracy * 100)}%` : 'Não disponível'}</td><td>{metrics?.loss == null ? 'Não disponível' : number(metrics.loss, 6)}</td><td>{metrics ? number(metrics.predictive_loss, 6) : 'Não disponível'}</td><td>{number(count, 0)}</td></tr>)}
+      </tbody></table></div><p className="caption">Loss inclui L2 quando habilitada; perda preditiva não inclui penalização. O resumo usa os pesos salvos; as curvas mostram as medições durante cada época.</p>
+      <LearningCurves runs={[run]} />
+    </section>}
+    <section className="panel"><div className="panel-heading"><div><h2>Relatório de classificação — teste final</h2><p>Métricas por classe e médias, calculadas no teste reservado.</p></div></div>
+      {result.classification_report ? <div className="table-scroll"><table className="data-table"><thead><tr><th scope="col">Categoria / Métrica</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1-score</th><th scope="col">Support</th></tr></thead><tbody>
+        {(['0', '1', 'macro avg', 'weighted avg'] as const).map((key) => { const row = result.classification_report![key]; return <tr key={key}><th scope="row">{key === '0' || key === '1' ? `Classe ${key}` : key === 'macro avg' ? 'Média macro' : 'Média ponderada'}</th><td>{number(row.precision * 100)}%</td><td>{number(row.recall * 100)}%</td><td>{number(row['f1-score'] * 100)}%</td><td>{number(row.support, 0)}</td></tr> })}
+      </tbody></table></div> : <p>Relatório por classe não disponível neste experimento antigo.</p>}
+      <p className="caption">Support: quantidade real de amostras. Média macro: média simples das classes. Média ponderada: média ponderada pelo support. Divisões por zero são apresentadas como 0.</p>
+      <p>Loss no teste: {result.loss == null ? 'Não disponível' : number(result.loss, 6)} · Perda preditiva: {number(result.predictive_loss, 6)}.</p>
+    </section>
     <section className="panel"><div className="panel-heading"><div><h2>Matriz de confusão do teste final</h2><p>{number(result.samples, 0)} amostras · positivo = classe 1 · limiar {result.threshold}.</p></div><span className="tag green-tag">Resultado real</span></div>
       <div className="confusion-scroll"><table className="confusion-matrix"><caption>Linhas: classe real · colunas: classe prevista</caption><thead><tr><th scope="col">Real ↓ / Previsto →</th><th scope="col">Classe 0</th><th scope="col">Classe 1</th></tr></thead><tbody><tr><th scope="row">Classe 0</th><td className="correct" title="Negativos classificados corretamente"><strong>{number(result.tn, 0)}</strong><span>TN · verdadeiro negativo</span></td><td className="incorrect" title="Classe 0 prevista como 1"><strong>{number(result.fp, 0)}</strong><span>FP · falso positivo</span></td></tr><tr><th scope="row">Classe 1</th><td className="incorrect" title="Classe 1 prevista como 0"><strong>{number(result.fn, 0)}</strong><span>FN · falso negativo</span></td><td className="correct" title="Positivos classificados corretamente"><strong>{number(result.tp, 0)}</strong><span>TP · verdadeiro positivo</span></td></tr></tbody></table></div>
       <MetricCards metrics={result} title="Métricas finais do teste" />
@@ -150,7 +171,7 @@ export default function Learning({ step, settings, onSettings, draft, onDraft, a
   return <>
     <div className="step-intro"><span className="eyebrow">{step === 10 ? 'EXPERIMENTOS' : `ETAPA ${String(step).padStart(2, '0')} / 09`} · {titles[step][0]}</span><h1>{titles[step][1]}<span className="title-dot">.</span></h1><p>{step === 6 ? 'Camadas e neurônios mudam a capacidade da MLP. A saída sigmoid estima um score da classe 1.' : step === 9 ? 'Selecione pela validação antes de abrir o teste reservado. O resultado final encerra este ciclo de escolha.' : 'Configurações e resultados pertencem a experimentos imutáveis, salvos localmente.'}</p></div>
     {studyQuery.isError && <ErrorState error={studyQuery.error} retry={() => void studyQuery.refetch()} />}
-    {study?.preprocess && <Notice><LockKeyhole size={15} /><strong>Divisão reservada neste ciclo:</strong> seed {study.preprocess.seed}, {study.preprocess.split_strategy === '70_15_15' ? '70/15/15' : '64/16/20'}, coorte {study.preprocess.missing_strategy === 'drop' ? 'completa (remoção)' : 'sem remoção'}. Novos treinos devem manter essas partições. {study.status !== 'open' && 'O teste já foi aberto; novos treinos e trocas de seleção estão encerrados.'}</Notice>}
+    {study?.preprocess && <Notice><LockKeyhole size={15} /><strong>Divisão reservada neste ciclo:</strong> seed {study.preprocess.seed}, {splitLabel(study.preprocess)}, coorte {study.preprocess.missing_strategy === 'drop' ? 'completa (remoção)' : 'sem remoção'}. Novos treinos devem manter essas partições. {study.status !== 'open' && 'O teste já foi aberto; novos treinos e trocas de seleção estão encerrados.'}</Notice>}
     {[6, 7, 8].includes(step) && <>
       <section className="panel learning-controls"><div className="panel-heading"><div><h2>Rascunho do próximo experimento</h2><p>{missingNames[settings.missing_strategy]} · {scalerNames[settings.scaler]} · seed do split {settings.seed}. Altere a preparação nas etapas 3–5.</p></div></div>
         <div className="field"><label htmlFor="experiment-name">Nome do experimento</label><input id="experiment-name" maxLength={100} value={draft.name} onChange={(event) => onDraft({ ...draft, name: event.target.value })} /></div>
@@ -194,7 +215,7 @@ export default function Learning({ step, settings, onSettings, draft, onDraft, a
       {step === 8 && <Quiz question="Reduzir a loss do treino garante melhorar a validação?" options={['Sim, basta treinar por mais épocas', 'Não, pode haver overfitting']} correct={1} explanation="O modelo pode continuar melhorando no treino enquanto perde capacidade de generalizar. Compare as curvas de validação e os pesos efetivamente salvos, mantendo o teste reservado." />}
     </>}
     {step === 9 && <>
-      {studyQuery.isPending ? <Loading /> : study?.result ? <><Notice tone="green"><Check size={17} />Teste final concluído e salvo. Consultar ou exportar não reexecuta a avaliação.</Notice><FinalResult result={study.result} />{selected && <ExportLinks run={selected} />}</> : <section className="panel final-gate"><LockKeyhole size={34} /><h2>Teste final reservado</h2>{selected ? <><p>Selecionado pela validação: <strong>{selected.config.name}</strong>.</p><MetricCards metrics={selected.validation_metrics!} title="Validação do experimento selecionado" /><p>Serão usadas {number(selected.split_counts.test, 0)} amostras de teste, o pipeline e os pesos salvos deste experimento. A abertura encerra os treinos e a seleção deste ciclo.</p><label className="check-field final-confirmation"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />Confirmo que escolhi este experimento somente pela validação e quero abrir o teste final.</label><button className="button primary" disabled={!confirmed || evaluateMutation.isPending || study?.status === 'evaluating'} onClick={() => evaluateMutation.mutate()}>{evaluateMutation.isPending || study?.status === 'evaluating' ? 'Avaliando no teste…' : 'Avaliar no teste final'}</button>{study?.status === 'evaluation_failed' && <Notice tone="amber">A tentativa anterior não foi concluída. A seleção continua congelada; é possível tentar novamente somente este experimento.</Notice>}{evaluateMutation.isError && <ErrorState error={evaluateMutation.error} retry={() => evaluateMutation.mutate()} />}</> : <><p>Compare os experimentos na etapa 8 e selecione um modelo concluído pela validação.</p><button className="button primary" onClick={() => navigate(8)}>Comparar experimentos<ArrowRight size={16} /></button></>}</section>}
+      {studyQuery.isPending ? <Loading /> : study?.result ? <><Notice tone="green"><Check size={17} />Teste final concluído e salvo. Consultar ou exportar não reexecuta a avaliação.</Notice><FinalResult result={study.result} run={selected} />{selected && <ExportLinks run={selected} />}</> : <section className="panel final-gate"><LockKeyhole size={34} /><h2>Teste final reservado</h2>{selected ? <><p>Selecionado pela validação: <strong>{selected.config.name}</strong>.</p><MetricCards metrics={selected.validation_metrics!} title="Validação do experimento selecionado" /><p>Serão usadas {number(selected.split_counts.test, 0)} amostras de teste, o pipeline e os pesos salvos deste experimento. A abertura encerra os treinos e a seleção deste ciclo.</p><label className="check-field final-confirmation"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />Confirmo que escolhi este experimento somente pela validação e quero abrir o teste final.</label><button className="button primary" disabled={!confirmed || evaluateMutation.isPending || study?.status === 'evaluating'} onClick={() => evaluateMutation.mutate()}>{evaluateMutation.isPending || study?.status === 'evaluating' ? 'Avaliando no teste…' : 'Avaliar no teste final'}</button>{study?.status === 'evaluation_failed' && <Notice tone="amber">A tentativa anterior não foi concluída. A seleção continua congelada; é possível tentar novamente somente este experimento.</Notice>}{evaluateMutation.isError && <ErrorState error={evaluateMutation.error} retry={() => evaluateMutation.mutate()} />}</> : <><p>Compare os experimentos na etapa 8 e selecione um modelo concluído pela validação.</p><button className="button primary" onClick={() => navigate(8)}>Comparar experimentos<ArrowRight size={16} /></button></>}</section>}
       <Quiz question="Se aumentam os falsos negativos e TP fica constante, o que acontece com recall?" options={['O recall diminui', 'O recall sempre aumenta']} correct={0} explanation="Recall = TP / (TP + FN). Aumentar FN aumenta o denominador e reduz a proporção de positivos encontrados." />
       <PythonCode code={'import json\nfrom urllib.request import urlopen\n\n# Consulta o resultado já salvo. GET não abre nem reexecuta o teste.\nwith urlopen("http://127.0.0.1:8000/api/evaluation/final") as response:\n    study = json.load(response)\n\nif study["status"] != "completed":\n    print("Teste reservado ou avaliação ainda não concluída.")\nelse:\n    result = study["result"]\n    tn, fp = result["confusion_matrix"][0]\n    fn, tp = result["confusion_matrix"][1]\n    def ratio(a, b):\n        return a / b if b else 0.0\n    print("accuracy:", ratio(tp + tn, tp + tn + fp + fn))\n    print("precision:", ratio(tp, tp + fp))\n    print("recall:", ratio(tp, tp + fn))\n    print("specificity:", ratio(tn, tn + fp))\n    print("F1:", ratio(2 * tp, 2 * tp + fp + fn))'} />
     </>}

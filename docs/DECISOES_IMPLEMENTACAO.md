@@ -148,3 +148,24 @@ O primeiro incremento implementa o MVP de dados e EDA previsto em `docs/07-roadm
 - `python3 scripts/inspecionar_base.py`: 10.000 linhas, 13 colunas, 5.000 rótulos de cada classe e contagens de ausências conferidas.
 - `python3 scripts/dev.py`: API e interface iniciadas; health e frontend responderam HTTP 200. Os testes de navegador finais também passaram contra esses serviços em execução.
 - Capturas: `frontend/test-results/inicio-desktop.png`, `eda-desktop.png` e `inicio-mobile.png`.
+
+## 2026-11-10 — Divisão personalizada e relatório completo
+
+### Ajuste posterior — exportação enxuta
+
+Apresentação atual: removidos o título inicial com nome do experimento e o parágrafo explicativo do documento HTML/Markdown. Os quatro títulos de seção permanecem, identificando validação/teste. No HTML, cabeçalhos e células usam fundo branco, sem zebra; títulos e cabeçalhos são pretos. A identificação parcial/final permanece nos links da interface.
+
+Atualização: ao terminar o treino, a exportação parcial já contém a tabela de classificação completa e a matriz de confusão da **validação**. Após avaliação final, ambas passam a usar o **teste**. Os títulos identificam explicitamente o subconjunto. Exportar antes do teste continua sem abrir o holdout nem alterar o estudo.
+
+A exportação anterior ao teste é identificada como “Relatório parcial” na interface, no título do documento e na aba do HTML, com orientações para concluir as etapas 8 e 9. Após avaliação do experimento, a mesma ação exporta “Relatório final”. A exportação continua sendo somente leitura: não seleciona modelo, não abre o teste e não inventa resultados ausentes.
+
+Por solicitação do usuário, HTML e Markdown passam a conter apenas quatro blocos: tabela de classificação, matriz de confusão, gráfico Acurácia × Épocas e gráfico Loss × Épocas. A tabela usa “Categoria / Métrica”, “Média macro” e “Média ponderada”, e inclui a linha Acurácia com support total. Saem os resumos, configurações e metadados das exportações formatadas. A tela de resultados continua completa.
+
+- A primeira página é a Visão geral. Seus três percentuais compartilham o rascunho com a etapa 5, persistem no navegador e são aplicados explicitamente após validação da soma 100%. Presets antigos continuam aceitos; `custom` usa percentuais da coorte total. A validação interna é `val_percent / (100 - test_percent)` após reservar o teste.
+- A divisão mantém estratificação, seed, manifesto de IDs e reserva por ciclo. A tela mostra as contagens reais da coorte atual, inclusive após remoção de ausências. Nenhum transformador é ajustado fora do treino.
+- Treino e validação são reavaliados após restauração dos pesos; teste usa `model.evaluate` apenas na avaliação final autorizada. `loss` inclui L2; `predictive_loss` não. O histórico original por época não é substituído pelas métricas dos pesos salvos.
+- Relatório por classe com scikit-learn: rótulos fixos 0/1, Precision/Recall/F1/Support, Macro avg e Weighted avg; `zero_division=0`. Campos da classe positiva existentes continuam disponíveis.
+- A interface exibe dois gráficos simultâneos, acurácia × épocas e loss × épocas, em treino, comparação e avaliação final, com legenda treino/validação e indicação da época salva.
+- HTML independente com tabelas, SVGs reais e CSS de impressão; permite salvar PDF pelo navegador. Markdown prioriza tabelas e inclui SVGs inline. Exportar é uma leitura dos resultados salvos, sem treinar ou avaliar novamente. Nomes são escapados no HTML.
+- Experimentos antigos sem métricas novas exibem ausência explícita, sem migração que reabra o teste.
+- Verificações: 111 testes backend e 5 testes unitários frontend aprovados; 17 testes Playwright no Chrome, incluindo treino real de duas MLPs com divisão 60/20/20, teste final, download HTML, navegação, acessibilidade e layout móvel. Ruff, ESLint, TypeScript e build Vite aprovados.

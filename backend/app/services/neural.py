@@ -11,7 +11,7 @@ os.environ.setdefault("TF_NUM_INTEROP_THREADS", "1")
 import numpy as np
 import tensorflow as tf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sklearn.metrics import confusion_matrix, log_loss
+from sklearn.metrics import classification_report, confusion_matrix, log_loss
 
 from app.services.preprocessing import PreparationSettings
 
@@ -128,6 +128,9 @@ def classification_metrics(y, probability, threshold: float) -> dict:
     precision = divide(tp, tp + fp)
     recall = divide(tp, tp + fn)
     return {
+        "classification_report": classification_report(
+            y, predicted, labels=[0, 1], output_dict=True, zero_division=0,
+        ),
         "confusion_matrix": [[tn, fp], [fn, tp]], "tn": tn, "fp": fp, "fn": fn, "tp": tp,
         "accuracy": divide(tp + tn, tn + fp + fn + tp), "precision": precision,
         "recall": recall, "specificity": divide(tn, tn + fp),

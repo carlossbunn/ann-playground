@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, BarChart3, BookOpen, BrainCircuit, Check, ChevronRight, CircleHelp, Database, FlaskConical, GitBranch, Home, Layers3, Lightbulb, LockKeyhole, Network, Play, ScanLine, ShieldCheck, SlidersHorizontal, Sparkles, Target, X } from 'lucide-react'
-import type { Profile } from './types'
+import type { PreprocessingSettings, Profile } from './types'
 import { get, number } from './lib/api'
-import { loadSettings, missingNames, scalerNames, settingsKey } from './lib/preprocessing'
+import { loadSettings, missingNames, scalerNames, settingsKey, splitLabel } from './lib/preprocessing'
 import { activeRunKey, learningKey, loadActiveRun, loadLearning } from './lib/learning'
 import { ErrorState, Loading, Notice } from './components/UI'
 import Problem from './features/Problem'
+import SplitControls from './components/SplitControls'
 
 const Explore = lazy(() => import('./features/Explore'))
 const Preparation = lazy(() => import('./features/Preparation'))
@@ -36,7 +37,7 @@ function HelpPanel({ step, onClose }: { step: number; onClose: () => void }) {
   </aside>
 }
 
-function Welcome({ profile, start }: { profile: Profile; start: () => void }) {
+function Welcome({ profile, start, settings, onChange }: { profile: Profile; start: () => void; settings: PreprocessingSettings; onChange: (settings: PreprocessingSettings) => void }) {
   return <>
     <section className="welcome-hero"><span className="hero-badge"><Sparkles size={14} />SEU LABORATÓRIO DE APRENDIZAGEM</span>
       <h1>Dos dados à sua<br />primeira <span>rede neural.</span></h1>
@@ -46,6 +47,7 @@ function Welcome({ profile, start }: { profile: Profile; start: () => void }) {
       <div className="hero-network" aria-hidden="true"><svg viewBox="0 0 240 240"><g stroke="currentColor" strokeWidth="1.3">{[55, 120, 185].flatMap((y, i) => [35, 90, 150, 205].map((z, j) => <line key={`${i}-${j}`} x1="35" y1={y} x2="120" y2={z} />))}{[35, 90, 150, 205].map((y, i) => <line key={i} x1="120" y1={y} x2="205" y2="120" />)}</g>{[55, 120, 185].map((y) => <circle key={y} cx="35" cy={y} r="9" />)}{[35, 90, 150, 205].map((y) => <circle key={y} cx="120" cy={y} r="9" />)}<circle cx="205" cy="120" r="13" /></svg></div>
     </section>
     <section className="welcome-stats" aria-label="Resumo da base real"><div><Database size={19} /><strong>{number(profile.rows, 0)}</strong><span>amostras reais</span></div><div><Layers3 size={19} /><strong>{profile.numeric_columns.length + profile.categorical_columns.length}</strong><span>atributos de entrada</span></div><div><Target size={19} /><strong>{Object.keys(profile.target_distribution).length}</strong><span>classes: 0 e 1</span></div></section>
+    <SplitControls settings={settings} onChange={onChange} />
     <section className="journey"><div className="section-heading"><span className="eyebrow">UM CAMINHO, NOVE DESCOBERTAS</span><h2>Aprenda o processo inteiro.</h2><p>Mais do que chegar a um número: entender como você chegou até ele.</p></div>
       <div className="journey-grid"><div><span className="journey-icon"><Database size={22} /></span><small>01 — 05</small><h3>Conheça e prepare</h3><p>Investigue os atributos, encontre ausências e prepare uma base confiável com fit somente no treino.</p><span className="tag green-tag">Dados e preparação reais</span></div><div><span className="journey-icon"><BrainCircuit size={22} /></span><small>06 — 08</small><h3>Construa e experimente</h3><p>Configure sua rede, acompanhe o aprendizado Keras e compare configurações salvas.</p><span className="tag green-tag">Treinamento disponível</span></div><div><span className="journey-icon"><ShieldCheck size={22} /></span><small>09</small><h3>Avalie com evidências</h3><p>Use o teste reservado para entender os acertos, os erros e exportar seu relatório.</p><span className="tag green-tag">Avaliação e exportação</span></div></div>
     </section>
@@ -107,9 +109,9 @@ export default function App() {
     </aside>
     <div className="app-body"><header className="topbar"><div><span className="breadcrumb">Laboratório<ChevronRight size={14} /></span><strong>Classificação binária</strong></div><div className="topbar-actions"><span className={`connection ${query.isSuccess ? 'online' : ''}`}><i />{query.isSuccess ? 'CSV conectado' : query.isError ? 'API indisponível' : 'Conectando…'}</span><button className="help-toggle" aria-label="Entenda o porquê" aria-expanded={helpOpen} onClick={() => setHelpOpen(!helpOpen)}><CircleHelp size={19} /><span>Entenda o porquê</span></button></div></header>
       <div className="workspace"><main id="conteudo" ref={contentRef} tabIndex={-1} className="main-content" aria-label="Conteúdo da etapa">
-        <Suspense fallback={<Loading />}>{query.isPending ? <Loading /> : query.isError ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : step === 0 ? <Welcome profile={query.data} start={() => navigate(1)} /> : step === 1 ? <Problem profile={query.data} next={() => navigate(2)} /> : step === 2 ? <Explore profile={query.data} back={() => navigate(1)} next={() => navigate(3)} /> : step >= 3 && step <= 5 ? <Preparation step={step} profile={query.data} settings={settings} onChange={setSettings} navigate={navigate} /> : <Learning step={step} settings={settings} onSettings={setSettings} draft={draft} onDraft={setDraft} activeId={activeId} onActive={setActiveId} navigate={navigate} />}</Suspense>
+        <Suspense fallback={<Loading />}>{query.isPending ? <Loading /> : query.isError ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : step === 0 ? <Welcome profile={query.data} settings={settings} onChange={setSettings} start={() => navigate(1)} /> : step === 1 ? <Problem profile={query.data} next={() => navigate(2)} /> : step === 2 ? <Explore profile={query.data} back={() => navigate(1)} next={() => navigate(3)} /> : step >= 3 && step <= 5 ? <Preparation step={step} profile={query.data} settings={settings} onChange={setSettings} navigate={navigate} /> : <Learning step={step} settings={settings} onSettings={setSettings} draft={draft} onDraft={setDraft} activeId={activeId} onActive={setActiveId} navigate={navigate} />}</Suspense>
       </main><div className={`help-container ${helpOpen ? 'is-open' : ''}`}><HelpPanel step={step} onClose={() => setHelpOpen(false)} /></div></div>
-      <footer className="reasoning-bar"><span><GitBranch size={15} /><strong>Sua linha de raciocínio</strong></span><span>{missingNames[settings.missing_strategy]} · {scalerNames[settings.scaler]}</span><span>{settings.split_strategy === '70_15_15' ? '70/15/15' : '64/16/20'} · seed {settings.seed}</span><span><Check size={13} />ID e target fora de X</span><span><LockKeyhole size={13} />Teste final na etapa 9</span></footer>
+      <footer className="reasoning-bar"><span><GitBranch size={15} /><strong>Sua linha de raciocínio</strong></span><span>{missingNames[settings.missing_strategy]} · {scalerNames[settings.scaler]}</span><span>{splitLabel(settings)} · seed {settings.seed}</span><span><Check size={13} />ID e target fora de X</span><span><LockKeyhole size={13} />Teste final na etapa 9</span></footer>
     </div>
   </div>
 }

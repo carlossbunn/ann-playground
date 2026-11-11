@@ -32,12 +32,12 @@ O treinamento usa **TensorFlow 2.20.0 / Keras 3.10.0 em CPU**, com NumPy 2.2.5. 
 - **Etapa 2:** histogramas com 10/20/30 intervalos, boxplot e outliers 1,5 IQR, estatísticas, categorias de `environment`, ausências ordenáveis e matriz de correlação Pearson com número de pares válidos.
 - **Etapa 3:** remoção, média, mediana e KNN (3/5/7 vizinhos); comparação de duas estratégias; histogramas, estatísticas e valores antes/depois; cobertura da coorte por classe; imputação separada e one-hot de `environment`.
 - **Etapa 4:** StandardScaler, MinMaxScaler e opção didática sem escala; histogramas, estatísticas e valores transformados de treino ou validação.
-- **Etapa 5:** divisão estratificada 70/15/15 ou 80/20 com validação interna (efetivo 64/16/20); seed configurável; contagem de classes; fingerprints das partições.
+- **Visão geral e etapa 5:** percentuais personalizados de treino/validação/teste (positivos e somando 100%), com contagens reais, persistência no navegador e divisão estratificada. A etapa 5 também mantém os presets 70/15/15 e 80/20 com validação interna (efetivo 64/16/20), seed e fingerprints das partições.
 - **Etapa 6:** construtor de 1–4 camadas ocultas, 4–256 neurônios, ReLU/tanh, dimensão pós-encoding e contagem real de parâmetros conferida pelo Keras.
 - **Etapa 7:** treino assíncrono real, Adam/SGD/RMSprop, learning rate, épocas, batch, seed de treinamento, limiar e curvas loss/accuracy por época.
 - **Etapa 8:** early stopping, restauração de pesos, L2, comparação de até quatro curvas, ordenação por validação e seleção explícita para teste final.
-- **Etapa 9:** confirmação do holdout, matriz 2×2, acurácia/precisão/recall/F1/especificidade, fórmulas e cálculos, com resultado persistido.
-- **Experimentos:** configurações imutáveis, histórico SQLite, recuperação após reiniciar, modelos `.keras`, pipelines ajustados e exportação de relatório Markdown, JSON, histórico CSV e Python.
+- **Etapa 9:** resumo de accuracy/loss/perda preditiva de treino, validação e teste nos pesos salvos; Precision/Recall/F1/Support por classe, Macro avg e Weighted avg; matriz 2×2, especificidade e fórmulas. Dois gráficos separados de acurácia × épocas e loss × épocas, com treino e validação, também aparecem durante o treinamento e na comparação.
+- **Experimentos:** configurações imutáveis, histórico SQLite, recuperação após reiniciar, modelos `.keras`, pipelines ajustados e exportação de relatório HTML formatado, Markdown com tabelas, JSON, histórico CSV e Python.
 - Rascunho de preparação compartilhado entre etapas e salvo no navegador. Restaurar padrões altera as escolhas, sem modificar o CSV.
 - Explicações contextuais, perguntas de aprendizagem e trechos Python que reproduzem os cálculos apresentados.
 - Estados reais de carregamento/erro, botão para tentar novamente, layout responsivo, acesso por teclado e resumos textuais dos gráficos.
@@ -57,7 +57,7 @@ Todos os agregados vêm de cálculos do backend sobre `data/base_classificacao_b
 | `POST /api/model/preview` | Dimensão e parâmetros da arquitetura; código correspondente |
 | `POST /api/experiments` | Cria experimento imutável e retorna 202 com ID e estado queued |
 | `GET /api/experiments` / `GET /api/experiments/{id}` | Configuração, estado e histórico real |
-| `GET /api/experiments/{id}/export?format=json` | `json`, `markdown`, `csv` ou `python` |
+| `GET /api/experiments/{id}/export?format=json` | `html`, `json`, `markdown`, `csv` ou `python` |
 | `GET /api/study` / `POST /api/study/select` | Ciclo de estudo e escolha explícita pela validação |
 | `GET /api/evaluation/final` / `POST /api/evaluation/final` | Consulta e avaliação final persistida |
 
@@ -67,19 +67,27 @@ O app completo informa `phase=5`, `ml_engine="tensorflow"` e `training_available
 
 ### Como percorrer o laboratório
 
-1. Explore o CSV nas etapas 1–2.
+1. Na **Visão geral**, informe Treino (%), Validação (%) e Teste (%) e clique em **Aplicar percentuais**. Depois explore o CSV nas etapas 1–2.
 2. Compare tratamentos e escalas nas etapas 3–4 e defina a divisão/seed na etapa 5.
 3. Construa a MLP na etapa 6. A saída é sempre `Dense(1, sigmoid)`.
 4. Configure e execute o treino na etapa 7. Um teste rápido pode usar 2 épocas, batch 128 e patience 1; isso verifica o fluxo, não estabelece um benchmark de desempenho.
 5. Altere a arquitetura ou os hiperparâmetros e treine outro experimento. Experimentos anteriores mantêm a configuração original.
 6. Na etapa 8 ou em **Experimentos**, marque curvas para comparar e use **Selecionar para teste** na linha do modelo escolhido.
-7. Na etapa 9, confirme a escolha pela validação e abra o teste final. Depois exporte o relatório.
+7. Na etapa 9, confirme a escolha pela validação e abra o teste final. Exporte o **Relatório HTML** para obter tabelas e os dois gráficos em um arquivo independente; abra-o no navegador e use Imprimir → Salvar como PDF, se desejar. O Markdown contém as tabelas e SVGs inline (a exibição dos gráficos depende do leitor Markdown).
 
 **Ciclo de estudo:** o primeiro experimento reserva a coorte e as partições (fonte, seed e proporções). Média/mediana/KNN, scaler, arquitetura e hiperparâmetros podem variar sem trocar as amostras de avaliação. Mudar de coorte por remoção, seed ou proporções após o primeiro treino retorna 409. Isso evita usar no treino de um experimento as amostras de teste de outro.
 
 Ao abrir o teste, a seleção é congelada e novos treinos desse ciclo são encerrados. Recarregar a página ou reiniciar o app mantém a reserva e o resultado. Consultar novamente o mesmo resultado não reexecuta a avaliação. Uma falha operacional permite repetir somente o modelo já selecionado. Um estudo independente exige uma nova reserva de dados; a interface não oferece botão para reabrir o mesmo holdout como se fosse novo.
 
 **Perdas e pesos:** `val_loss` inclui a penalização L2, enquanto `predictive_loss` mede entropia cruzada sem penalização. A tabela permite ordenar pelas duas. Com early stopping, o modelo salvo usa os melhores pesos por val_loss; sem ele, usa a última época. Melhor época observada e época dos pesos salvos são apresentadas separadamente. Métricas de validação são recalculadas sobre os pesos efetivamente salvos.
+
+O resumo final também reavalia treino e teste com os pesos salvos. O histórico por época é preservado: métricas de treino durante as atualizações podem diferir dessa reavaliação. Support é a contagem de amostras por classe; Macro avg dá peso igual às classes; Weighted avg pondera pelo support. Métricas sem denominador usam 0. Resultados antigos que não guardaram os novos campos mostram “Não disponível”, sem inventar valores nem reabrir o teste.
+
+Os relatórios exportados em **HTML e Markdown** são enxutos: contêm somente a tabela de classificação (Classe 0, Classe 1, Acurácia, Média macro e Média ponderada), a matriz de confusão e os gráficos Acurácia × Épocas e Loss × Épocas, com treino e validação. Na linha Acurácia, o valor global fica na coluna F1-score, conforme a organização tradicional do relatório de classificação; Precision e Recall mostram travessões. A tela de resultados mantém o resumo completo.
+
+Depois de concluir o treino, os links mostram **Relatório parcial** e o documento contém a tabela de classificação e a matriz de confusão **da validação**, além dos dois gráficos de treino/validação. Não é preciso abrir o teste para consultar essas informações. Após selecionar o modelo na etapa 8 e avaliá-lo na etapa 9, os links passam a **Relatório final HTML/Markdown** e a tabela e a matriz usam os resultados **do teste** persistidos. O documento começa diretamente pelos quatro blocos, sem título de identificação nem parágrafo de instruções. O conjunto utilizado aparece nos títulos. No HTML, todas as células têm fundo branco e os títulos e cabeçalhos são pretos. Baixe novamente para obter a versão final; exportar não executa a avaliação automaticamente.
+
+Para percentuais personalizados na API, envie no objeto de preparação `"split_strategy": "custom"`, `"train_percent": 60`, `"val_percent": 20`, `"test_percent": 20`. Aceita valores decimais positivos somando 100; quantidades efetivas podem sofrer arredondamento. A divisão é reservada no primeiro experimento do ciclo.
 
 ### Dados persistidos e execução
 

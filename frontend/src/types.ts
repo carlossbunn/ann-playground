@@ -53,7 +53,10 @@ export interface Correlations {
 export interface PreprocessingSettings {
   missing_strategy: 'drop' | 'mean' | 'median' | 'knn'
   scaler: 'standard' | 'minmax' | 'none'
-  split_strategy: '70_15_15' | '80_20'
+  split_strategy: '70_15_15' | '80_20' | 'custom'
+  train_percent?: number
+  val_percent?: number
+  test_percent?: number
   seed: number
   knn_neighbors: 3 | 5 | 7
   categorical_strategy: 'most_frequent' | 'constant'
@@ -133,6 +136,9 @@ export interface ModelDescription {
 }
 
 export interface ClassificationMetrics {
+  classification_report?: Record<'0' | '1' | 'macro avg' | 'weighted avg', {
+    precision: number; recall: number; 'f1-score': number; support: number
+  }>
   loss?: number
   predictive_loss: number
   accuracy: number
@@ -159,6 +165,7 @@ export interface Experiment {
   best_epoch: number | null
   saved_epoch: number | null
   validation_metrics: ClassificationMetrics | null
+  train_metrics?: ClassificationMetrics | null
   test_metrics: ClassificationMetrics | null
   dataset_sha256: string
   partition_key: string

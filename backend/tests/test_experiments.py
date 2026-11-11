@@ -19,6 +19,7 @@ from app.services.neural import (
     probabilities,
     tf,
 )
+from app.services.preprocessing import PreparationSettings
 
 
 def wait(client, run_id):
@@ -103,7 +104,7 @@ def test_exports_are_actual_saved_results(laboratory):
     assert data["history"] == first["history"]
     assert set(data["partition_ids"]) == {"train", "val", "test"}
     assert client.get(base + "?format=csv").text.count("\n") == 3
-    assert "Validação do modelo salvo" in client.get(base + "?format=markdown").text
+    assert "Relatório de classificação" in client.get(base + "?format=markdown").text
     code = client.get(base + "?format=python").text
     compile(code, "reproduce.py", "exec")
     assert "model.fit(" in code
@@ -145,9 +146,17 @@ def test_confusion_metrics_from_known_counts():
     assert result["recall"] == 0.5
     assert result["f1"] == 0.5
     assert result["specificity"] == pytest.approx(2 / 3)
+    report = result["classification_report"]
+    assert report["0"]["support"] == 3
+    assert report["1"]["support"] == 2
+    assert report["0"]["precision"] == pytest.approx(2 / 3)
+    assert report["0"]["recall"] == pytest.approx(2 / 3)
+    assert report["macro avg"]["f1-score"] == pytest.approx((2 / 3 + 0.5) / 2)
+    assert report["weighted avg"]["f1-score"] == pytest.approx((3 * 2 / 3 + 2 * 0.5) / 5)
     no_positive = classification_metrics([0, 1], [0.1, 0.1], 0.5)
     assert no_positive["precision"] == 0
     assert "precision" in no_positive["undefined_metrics"]
+    assert no_positive["classification_report"]["1"]["precision"] == 0
 
 
 def test_final_lock_concurrency_idempotence_and_persistence(laboratory):
@@ -273,3 +282,91 @@ def test_restart_keeps_completed_run_and_can_evaluate_saved_artifacts(tmp_path):
         })
         assert result.status_code == 200
         assert result.json()["result"]["samples"] == 1500
+
+
+def test_custom_split_saved_weights_metrics_and_formatted_reports(tmp_path):
+    from app.services.neural import batches
+
+    with TestClient(create_app(storage_path=tmp_path, enable_training=True)) as client:
+        config = {
+            "name": '<script>alert("teste")</script>',
+            "preprocess": {"split_strategy": "custom", "train_percent": 60,
+                           "val_percent": 20, "test_percent": 20},
+            "model": {"hidden_layers": [4], "l2": 0.01},
+            "training": {"epochs": 2, "early_stopping": False, "batch_size": 256},
+        }
+        bad = {**config, "preprocess": {**config["preprocess"], "train_percent": 70}}
+        assert client.post("/api/experiments", json=bad).status_code == 422
+        created = client.post("/api/experiments", json=config)
+        assert created.status_code == 202
+        run = wait(client, created.json()["id"])
+        assert run["split_counts"] == {"train": 6000, "val": 2000, "test": 2000}
+        base = f"/api/experiments/{run['id']}/export"
+        pending = client.get(base + "?format=html").text
+        pending_markdown = client.get(base + "?format=markdown").text
+        for content in (pending, pending_markdown):
+            assert "Relatório parcial" not in content
+            assert "Teste reservado" not in content
+            assert "Selecionar para teste" not in content
+            assert "ANN Lab" not in content
+        assert "<h1>" not in pending
+        assert pending.count("<svg ") == 2
+        assert pending.count("<table>") == 2
+        for content in (pending, pending_markdown):
+            assert "Relatório de classificação — validação" in content
+            assert "Matriz de confusão — validação" in content
+            for label in ("Precision", "Recall", "F1-score", "Support", "Acurácia",
+                          "Média macro", "Média ponderada"):
+                assert label in content
+        val = run["validation_metrics"]
+        accuracy = f"{val['accuracy'] * 100:.2f}%".replace(".", ",")
+        assert f"| Acurácia | — | — | {accuracy} | {val['samples']} |" in pending_markdown
+        assert f"| Classe 0 | {val['tn']} | {val['fp']} |" in pending_markdown
+        assert f"| Classe 1 | {val['fn']} | {val['tp']} |" in pending_markdown
+        assert client.get("/api/study").json()["status"] == "open"
+        assert client.get(f"/api/experiments/{run['id']}").json()["test_metrics"] is None
+        client.post("/api/study/select", json={"experiment_id": run["id"]})
+        response = client.post("/api/evaluation/final", json={
+            "experiment_id": run["id"], "confirm": True,
+        })
+        assert response.status_code == 200
+        run = client.get(f"/api/experiments/{run['id']}").json()
+        instance = client.app.state.experiments
+        model = tf.keras.models.load_model(tmp_path / "artifacts" / run["id"] / "model.keras")
+        prepared = instance.preparation.prepare(
+            PreparationSettings.model_validate(run["config"]["preprocess"])
+        )
+        for part, key in [("train", "train_metrics"), ("val", "validation_metrics"),
+                          ("test", "test_metrics")]:
+            frame = prepared.partitions[part]
+            transformed = prepared.pipeline.transform(frame[FEATURES])
+            measured = model.evaluate(batches(transformed, frame.target, 256, 42),
+                                      return_dict=True, verbose=0)
+            metrics = run[key]
+            assert metrics["loss"] == pytest.approx(measured["loss"])
+            assert metrics["accuracy"] == pytest.approx(measured["accuracy"])
+            assert metrics["loss"] > metrics["predictive_loss"]
+            assert metrics["classification_report"]["macro avg"]["support"] == len(frame)
+        html = client.get(base + "?format=html")
+        assert html.headers["content-type"].startswith("text/html")
+        assert "<script>" not in html.text
+        assert "alert(" not in html.text
+        assert html.text.count("<svg ") == 2
+        assert "Relatório parcial" not in html.text
+        assert "Relatório de classificação — teste final" in html.text
+        assert "Matriz de confusão — teste final" in html.text
+        assert "Relatório de classificação — validação" not in html.text
+        for label in ["Categoria / Métrica", "Média macro", "Média ponderada",
+                      "Support", "Matriz de confusão",
+                      "Acurácia × Épocas", "Loss × Épocas"]:
+            assert label in html.text
+            assert label in client.get(base + "?format=markdown").text
+        markdown = client.get(base + "?format=markdown").text
+        assert html.text.count("<h2>") == 4
+        assert html.text.count("<table>") == 2
+        assert sum(line.startswith("## ") for line in markdown.splitlines()) == 4
+        assert "| Acurácia | — | — |" in markdown
+        for content in (html.text, markdown):
+            for extra in ("Resumo do desempenho", "Divisão dos dados", "Configuração",
+                          "SHA-256", "Especificidade", "Perda preditiva", "Status:"):
+                assert extra not in content

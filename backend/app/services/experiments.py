@@ -174,7 +174,8 @@ class ExperimentService:
                 "id": run_id, "config": config.model_dump(), "status": "queued",
                 "created_at": now(), "started_at": None, "ended_at": None,
                 "history": [], "completed_epochs": 0, "best_epoch": None,
-                "saved_epoch": None, "validation_metrics": None, "test_metrics": None,
+                "saved_epoch": None, "train_metrics": None,
+                "validation_metrics": None, "test_metrics": None,
                 "dataset_sha256": self.dataset.file_hash, "partition_key": key,
                 "partition_ids": manifest,
                 "split_counts": {name: len(frame) for name, frame in parts.items()},
@@ -261,6 +262,16 @@ class ExperimentService:
         )
         metrics.update(loss=float(measured["loss"]),
                        predictive_loss=float(measured["predictive_loss"]))
+        train_measured = model.evaluate(batches(
+            prepared.transformed["train"], prepared.partitions["train"].target,
+            config.training.batch_size, config.training.seed,
+        ), return_dict=True, verbose=0)
+        train_metrics = classification_metrics(
+            prepared.partitions["train"].target,
+            probabilities(model, prepared.transformed["train"]), config.threshold,
+        )
+        train_metrics.update(loss=float(train_measured["loss"]),
+                             predictive_loss=float(train_measured["predictive_loss"]))
         directory = self.repo.root / "artifacts" / run_id
         directory.mkdir(parents=True, exist_ok=True)
         model.save(directory / "model.pending.keras")
@@ -272,7 +283,7 @@ class ExperimentService:
         best_epoch = min(history, key=lambda epoch: epoch["val_loss"])["epoch"]
         self.repo.update(
             run_id, status="completed", ended_at=now(), duration_seconds=time.monotonic() - started,
-            validation_metrics=metrics, best_epoch=best_epoch,
+            train_metrics=train_metrics, validation_metrics=metrics, best_epoch=best_epoch,
             saved_epoch=best_epoch if config.training.early_stopping else len(history),
             artifact_hashes=hashes,
         )
@@ -326,6 +337,12 @@ class ExperimentService:
                 result = classification_metrics(
                     test.target, probabilities(model, X_test), run["config"]["threshold"],
                 )
+                measured = model.evaluate(batches(
+                    X_test, test.target, run["config"]["training"]["batch_size"],
+                    run["config"]["training"]["seed"],
+                ), return_dict=True, verbose=0)
+                result.update(loss=float(measured["loss"]),
+                              predictive_loss=float(measured["predictive_loss"]))
                 result.update(experiment_id=run_id, evaluated_at=now(), positive_class=1,
                               dataset_sha256=run["dataset_sha256"])
             with self.repo.connect(write=True) as db:
@@ -381,6 +398,12 @@ print(model.evaluate(batches(X_val, val.target, training.batch_size, training.se
 
 
 def export_run(run, format_name):
+    if format_name in ("html", "markdown"):
+        from app.services.reporting import render_report
+
+        return render_report(run, format_name), (
+            "text/html" if format_name == "html" else "text/markdown"
+        ), "html" if format_name == "html" else "md"
     if format_name == "python":
         return reproduction_code(run), "text/x-python", "py"
     if format_name == "csv":
@@ -392,28 +415,4 @@ def export_run(run, format_name):
         writer.writeheader()
         writer.writerows(run["history"])
         return output.getvalue(), "text/csv", "csv"
-    if format_name == "markdown":
-        content = f"# ANN Lab — {run['config']['name']}\n\n"
-        content += f"Experimento: {run['id']}\n\nStatus: {run['status']}\n\n"
-        content += (
-            f"Épocas realizadas: {run['completed_epochs']} / "
-            f"{run['config']['training']['epochs']}\n\n"
-            f"Melhor época: {run['best_epoch']}; pesos salvos da época: {run['saved_epoch']}.\n\n"
-            f"Partições: {encode(run['split_counts'])}\n\n"
-            f"Arquitetura: {encode(run['model_summary'])}\n\n"
-            f"Features: {', '.join(run['output_features'])}\n\n"
-        )
-        for title, value in [("Configuração", run["config"]), ("Versões", run["versions"]),
-                             ("Validação do modelo salvo", run["validation_metrics"]),
-                             ("Teste final", run["test_metrics"])]:
-            formatted = json.dumps(value, indent=2, ensure_ascii=False)
-            content += f"## {title}\n\n```json\n{formatted}\n```\n\n"
-        content += (
-            f"Fonte SHA-256: `{run['dataset_sha256']}`\n\n"
-            "Classes e unidades não têm significado de domínio informado. Fit apenas no treino. "
-            "Perda loss inclui L2; predictive_loss mede a entropia cruzada sem penalização. "
-            "Métricas de teste null indicam teste ainda reservado. "
-            "Reprodutibilidade aproximada entre versões e equipamentos.\n"
-        )
-        return content, "text/markdown", "md"
     return json.dumps(run, ensure_ascii=False, indent=2), "application/json", "json"

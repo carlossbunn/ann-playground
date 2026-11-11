@@ -60,3 +60,16 @@
   .experiments-link { position: absolute; right: 16px; top: 45px; margin-top: 0; font-size: 8px; padding: 3px 7px; }
   .experiments-link > svg { width: 12px; }
 }
+/* Percentuais compartilhados entre a visão geral e a preparação. */
+.split-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; border: 0; padding: 0; margin: 0; }
+.split-fields .field { flex: 1 1 130px; min-width: 0; }
+.split-fields input { width: 100%; min-height: 40px; border: 1px solid #dce3ee; border-radius: 7px; background: #fff; color: #17243b; padding: 9px 12px; font: inherit; font-variant-numeric: tabular-nums; }
+.split-fields input:focus-visible { outline: 3px solid #5679df; outline-offset: 3px; }
+.split-fields input:disabled { background: #f3f6fc; color: #52617a; }
+.split-settings form > p { margin-top: 12px; font-size: 11px; }
+.split-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.split-counts > div { display: flex; flex-direction: column; padding: 16px; background: #f3f6fc; border-radius: 10px; }
+.split-counts strong { font-size: 24px; color: #315ddb; }
+.split-counts small { color: #52617a; }
+.learning-curves h3 { margin-top: 28px; }
+@media (max-width: 600px) { .split-counts { grid-template-columns: 1fr; } }
