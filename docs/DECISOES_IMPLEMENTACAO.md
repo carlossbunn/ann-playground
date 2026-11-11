@@ -151,6 +151,10 @@ O primeiro incremento implementa o MVP de dados e EDA previsto em `docs/07-roadm
 
 ## 2026-11-10 — Divisão personalizada e relatório completo
 
+### Integração com o GitHub
+
+As alterações foram integradas ao commit `ca7b0da` de `carlossbunn/ann-playground`, preservando modelo pronto, exploração de previsões, diagnóstico de inconsistências, estatísticas do StandardScaler, valor preditivo negativo e script Matplotlib. O modelo pronto respeita também os percentuais personalizados do rascunho ou da reserva do estudo. Verificações da versão integrada: `make check`, `make test` (112 pytest e 5 Vitest) e `make e2e` (17 Playwright) aprovados.
+
 ### Ajuste posterior — exportação enxuta
 
 Apresentação atual: removidos o título inicial com nome do experimento e o parágrafo explicativo do documento HTML/Markdown. Os quatro títulos de seção permanecem, identificando validação/teste. No HTML, cabeçalhos e células usam fundo branco, sem zebra; títulos e cabeçalhos são pretos. A identificação parcial/final permanece nos links da interface.

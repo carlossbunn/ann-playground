@@ -118,6 +118,27 @@ def test_model_preview_matches_training(laboratory):
     assert response.json()["total_parameters"] == first["model_summary"]["total_parameters"]
 
 
+def test_saved_model_inference_is_real_and_never_loads_test_samples(laboratory):
+    client, first, _, root = laboratory
+    url = f"/api/experiments/{first['id']}"
+    sample = client.get(url + "/sample?subset=val&offset=0").json()
+    assert client.get(url + "/sample?subset=test").status_code == 422
+    scenario = {"numeric": sample["numeric"], "environment": sample["environment"]}
+    response = client.post(url + "/predict", json={"scenarios": [scenario, scenario]})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["scenarios"][0]["score"] == result["scenarios"][1]["score"]
+    saved = client.app.state.experiments.repo.get(first["id"])
+    row = client.app.state.experiments.dataset.df.set_index("sample_id", drop=False).loc[
+        [saved["partition_ids"]["val"][0]]
+    ]
+    pipeline = joblib.load(root / "artifacts" / first["id"] / "pipeline.joblib")
+    model = tf.keras.models.load_model(root / "artifacts" / first["id"] / "model.keras")
+    expected = probabilities(model, pipeline.transform(row[FEATURES]))[0]
+    assert result["scenarios"][0]["score"] == pytest.approx(expected, abs=1e-6)
+    assert result["scenarios"][0]["predicted_class"] == int(expected >= result["threshold"])
+
+
 @pytest.mark.parametrize("patch", [
     {"model": {"hidden_layers": [0]}}, {"model": {"hidden_layers": [8] * 5}},
     {"model": {"learning_rate": 0}}, {"model": {"optimizer": "fake"}},
@@ -157,6 +178,10 @@ def test_confusion_metrics_from_known_counts():
     assert no_positive["precision"] == 0
     assert "precision" in no_positive["undefined_metrics"]
     assert no_positive["classification_report"]["1"]["precision"] == 0
+    assert result["negative_predictive_value"] == pytest.approx(2 / 3)
+    no_negative = classification_metrics([0, 1], [0.9, 0.9], 0.5)
+    assert no_negative["negative_predictive_value"] == 0
+    assert "negative_predictive_value" in no_negative["undefined_metrics"]
 
 
 def test_final_lock_concurrency_idempotence_and_persistence(laboratory):

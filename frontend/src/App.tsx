@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, BarChart3, BookOpen, BrainCircuit, Check, ChevronRight, CircleHelp, Database, FlaskConical, GitBranch, Home, Layers3, Lightbulb, LockKeyhole, Network, Play, ScanLine, ShieldCheck, SlidersHorizontal, Sparkles, Target, X } from 'lucide-react'
-import type { PreprocessingSettings, Profile } from './types'
-import { get, number } from './lib/api'
+import type { Experiment, PreprocessingSettings, Profile, Study } from './types'
+import { get, number, post } from './lib/api'
 import { loadSettings, missingNames, scalerNames, settingsKey, splitLabel } from './lib/preprocessing'
-import { activeRunKey, learningKey, loadActiveRun, loadLearning } from './lib/learning'
+import { activeRunKey, learningKey, loadActiveRun, loadLearning, presetLearning } from './lib/learning'
 import { ErrorState, Loading, Notice } from './components/UI'
 import Problem from './features/Problem'
 import SplitControls from './components/SplitControls'
@@ -12,6 +12,7 @@ import SplitControls from './components/SplitControls'
 const Explore = lazy(() => import('./features/Explore'))
 const Preparation = lazy(() => import('./features/Preparation'))
 const Learning = lazy(() => import('./features/Learning'))
+const UseModel = lazy(() => import('./features/UseModel'))
 
 const steps = [
   { name: 'Entenda o problema', icon: Target, concept: 'Uma MLP aprende uma relação entre atributos (X) e respostas conhecidas (y). A tarefa é prever target: 0 ou 1.', why: 'Separar atributos, resposta e identificador evita ensinar a rede com informações que não deveria conhecer.', mistake: 'Usar target ou sample_id como entrada da rede.', question: 'O que entra na rede?', answer: 'Dez atributos numéricos e environment. target é a resposta; sample_id identifica a amostra.' },
@@ -37,12 +38,14 @@ function HelpPanel({ step, onClose }: { step: number; onClose: () => void }) {
   </aside>
 }
 
-function Welcome({ profile, start, settings, onChange }: { profile: Profile; start: () => void; settings: PreprocessingSettings; onChange: (settings: PreprocessingSettings) => void }) {
+function Welcome({ profile, start, settings, onChange, preset, busy }: { profile: Profile; start: () => void; settings: PreprocessingSettings; onChange: (settings: PreprocessingSettings) => void; preset: () => void; busy: boolean }) {
   return <>
     <section className="welcome-hero"><span className="hero-badge"><Sparkles size={14} />SEU LABORATÓRIO DE APRENDIZAGEM</span>
       <h1>Dos dados à sua<br />primeira <span>rede neural.</span></h1>
       <p>Entenda cada decisão de uma classificação binária. Explore dados reais, descubra padrões e construa conhecimento, uma etapa por vez.</p>
       <button className="button primary" onClick={start}>Começar a explorar<ArrowRight size={18} /></button>
+      <button className="button secondary" disabled={busy} onClick={preset}><Play size={16} />{busy ? 'Iniciando treino…' : 'Usar modelo pronto e treinar'}</button>
+      <p>Mediana, StandardScaler e MLP com Adam. Se já houver partições reservadas, a divisão e a coorte serão preservadas.</p>
       <div className="hero-note"><ShieldCheck size={15} />Local, em português e com dados reais.</div>
       <div className="hero-network" aria-hidden="true"><svg viewBox="0 0 240 240"><g stroke="currentColor" strokeWidth="1.3">{[55, 120, 185].flatMap((y, i) => [35, 90, 150, 205].map((z, j) => <line key={`${i}-${j}`} x1="35" y1={y} x2="120" y2={z} />))}{[35, 90, 150, 205].map((y, i) => <line key={i} x1="120" y1={y} x2="205" y2="120" />)}</g>{[55, 120, 185].map((y) => <circle key={y} cx="35" cy={y} r="9" />)}{[35, 90, 150, 205].map((y) => <circle key={y} cx="120" cy={y} r="9" />)}<circle cx="205" cy="120" r="13" /></svg></div>
     </section>
@@ -58,6 +61,7 @@ function Welcome({ profile, start, settings, onChange }: { profile: Profile; sta
 
 function readStep() {
   if (window.location.hash === '#experimentos') return 10
+  if (window.location.hash === '#use-seu-modelo') return 11
   const match = window.location.hash.match(/^#etapa-([1-9])$/)
   return match ? Number(match[1]) : 0
 }
@@ -69,6 +73,7 @@ export default function App() {
   const [draft, setDraft] = useState(loadLearning)
   const [activeId, setActiveId] = useState(loadActiveRun)
   const contentRef = useRef<HTMLElement>(null)
+  const client = useQueryClient()
   const query = useQuery({ queryKey: ['profile'], queryFn: ({ signal }) => get<Profile>('/dataset/profile', signal) })
   useEffect(() => {
     try { localStorage.setItem(settingsKey, JSON.stringify(settings)) }
@@ -87,11 +92,35 @@ export default function App() {
   }, [])
   function navigate(value: number) {
     setStep(value)
-    window.location.hash = value === 10 ? 'experimentos' : value ? `etapa-${value}` : 'inicio'
+    window.location.hash = value === 11 ? 'use-seu-modelo' : value === 10 ? 'experimentos' : value ? `etapa-${value}` : 'inicio'
     setHelpOpen(false)
     window.scrollTo({ top: 0, behavior: 'instant' })
     contentRef.current?.focus({ preventScroll: true })
   }
+  const presetMutation = useMutation({
+    mutationFn: async () => {
+      const study = await get<Study>('/study')
+      if (study.status !== 'open') throw new Error('O teste deste estudo já foi aberto. Novos treinos estão encerrados neste ciclo.')
+      const reserved = study.preprocess
+      const preprocess = { ...settings, missing_strategy: 'median' as const, scaler: 'standard' as const, ...(reserved ? {
+        split_strategy: reserved.split_strategy, seed: reserved.seed,
+        train_percent: reserved.train_percent, val_percent: reserved.val_percent,
+        test_percent: reserved.test_percent,
+        missing_strategy: reserved.missing_strategy === 'drop' ? 'drop' as const : 'median' as const,
+      } : {}) }
+      const preparedDraft = structuredClone(presetLearning)
+      const run = await post<Experiment>('/experiments', { ...preparedDraft, preprocess })
+      return { run, preprocess, preparedDraft }
+    },
+    onSuccess: ({ run, preprocess, preparedDraft }) => {
+      setSettings(preprocess)
+      setDraft(preparedDraft)
+      setActiveId(run.id)
+      void client.invalidateQueries({ queryKey: ['experiments'] })
+      void client.invalidateQueries({ queryKey: ['study'] })
+      navigate(7)
+    },
+  })
   return <div className="app-shell">
     <a className="skip-link" href="#conteudo" onClick={(event) => { event.preventDefault(); contentRef.current?.focus() }}>Pular para o conteúdo</a>
     <aside className="sidebar"><button className="brand" onClick={() => navigate(0)} aria-label="ANN Lab, início"><span className="brand-mark"><Network size={24} /></span><span>ANN<span className="brand-light">LAB</span><small>APRENDA EXPERIMENTANDO</small></span></button>
@@ -104,12 +133,14 @@ export default function App() {
         </button>
       })}</nav>
       <button className={`home-link experiments-link ${step === 10 ? 'active' : ''}`} onClick={() => navigate(10)}><FlaskConical size={17} />Experimentos</button>
+      <button className={`home-link ${step === 11 ? 'active' : ''}`} aria-current={step === 11 ? 'page' : undefined} onClick={() => navigate(11)}><Network size={17} />Use seu modelo</button>
       <div className="sidebar-phase"><span className="phase-dot" /><div><strong>ANN Lab · Percurso completo</strong><small>9 etapas disponíveis</small></div></div>
       <div className="sidebar-footer"><FlaskConical size={16} /><span>Um laboratório, não uma caixa-preta.</span></div>
     </aside>
     <div className="app-body"><header className="topbar"><div><span className="breadcrumb">Laboratório<ChevronRight size={14} /></span><strong>Classificação binária</strong></div><div className="topbar-actions"><span className={`connection ${query.isSuccess ? 'online' : ''}`}><i />{query.isSuccess ? 'CSV conectado' : query.isError ? 'API indisponível' : 'Conectando…'}</span><button className="help-toggle" aria-label="Entenda o porquê" aria-expanded={helpOpen} onClick={() => setHelpOpen(!helpOpen)}><CircleHelp size={19} /><span>Entenda o porquê</span></button></div></header>
       <div className="workspace"><main id="conteudo" ref={contentRef} tabIndex={-1} className="main-content" aria-label="Conteúdo da etapa">
-        <Suspense fallback={<Loading />}>{query.isPending ? <Loading /> : query.isError ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : step === 0 ? <Welcome profile={query.data} settings={settings} onChange={setSettings} start={() => navigate(1)} /> : step === 1 ? <Problem profile={query.data} next={() => navigate(2)} /> : step === 2 ? <Explore profile={query.data} back={() => navigate(1)} next={() => navigate(3)} /> : step >= 3 && step <= 5 ? <Preparation step={step} profile={query.data} settings={settings} onChange={setSettings} navigate={navigate} /> : <Learning step={step} settings={settings} onSettings={setSettings} draft={draft} onDraft={setDraft} activeId={activeId} onActive={setActiveId} navigate={navigate} />}</Suspense>
+        {presetMutation.isError && <ErrorState error={presetMutation.error} retry={() => presetMutation.mutate()} />}
+        <Suspense fallback={<Loading />}>{query.isPending ? <Loading /> : query.isError ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : step === 0 ? <Welcome profile={query.data} settings={settings} onChange={setSettings} start={() => navigate(1)} preset={() => presetMutation.mutate()} busy={presetMutation.isPending} /> : step === 1 ? <Problem profile={query.data} next={() => navigate(2)} /> : step === 2 ? <Explore profile={query.data} back={() => navigate(1)} next={() => navigate(3)} /> : step >= 3 && step <= 5 ? <Preparation step={step} profile={query.data} settings={settings} onChange={setSettings} navigate={navigate} /> : step === 11 ? <UseModel navigate={navigate} /> : <Learning step={step} settings={settings} onSettings={setSettings} draft={draft} onDraft={setDraft} activeId={activeId} onActive={setActiveId} navigate={navigate} preset={() => presetMutation.mutate()} presetBusy={presetMutation.isPending} />}</Suspense>
       </main><div className={`help-container ${helpOpen ? 'is-open' : ''}`}><HelpPanel step={step} onClose={() => setHelpOpen(false)} /></div></div>
       <footer className="reasoning-bar"><span><GitBranch size={15} /><strong>Sua linha de raciocínio</strong></span><span>{missingNames[settings.missing_strategy]} · {scalerNames[settings.scaler]}</span><span>{splitLabel(settings)} · seed {settings.seed}</span><span><Check size={13} />ID e target fora de X</span><span><LockKeyhole size={13} />Teste final na etapa 9</span></footer>
     </div>

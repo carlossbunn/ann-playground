@@ -2,9 +2,17 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import Field, field_validator
 
+from app.services.dataset import NUMERIC_FEATURES
 from app.services.experiments import ExperimentService, export_run, reproduction_code
-from app.services.neural import ExperimentConfig, FinalRequest, SelectRequest, describe_model
+from app.services.neural import (
+    ExperimentConfig,
+    FinalRequest,
+    SelectRequest,
+    StrictModel,
+    describe_model,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -19,6 +27,36 @@ def service(request: Request) -> ExperimentService:
 
 
 Service = Annotated[ExperimentService, Depends(service)]
+
+
+class InputScenario(StrictModel):
+    numeric: dict[str, float | None]
+    environment: Literal["cold", "mild", "hot"] | None
+
+    @field_validator("numeric")
+    @classmethod
+    def check_numeric(cls, value):
+        import math
+        if set(value) != set(NUMERIC_FEATURES):
+            raise ValueError("Informe todos os dez atributos numéricos.")
+        if any(v is not None and not math.isfinite(v) for v in value.values()):
+            raise ValueError("Informe somente números finitos.")
+        return value
+
+
+class PredictionRequest(StrictModel):
+    scenarios: list[InputScenario] = Field(min_length=1, max_length=2)
+
+
+@router.get("/experiments/{run_id}/sample")
+def model_sample(run_id: str, instance: Service, subset: Literal["train", "val"] = "train",
+                 offset: int = 0):
+    return instance.inference_sample(run_id, subset, offset)
+
+
+@router.post("/experiments/{run_id}/predict")
+def model_predict(run_id: str, request: PredictionRequest, instance: Service):
+    return instance.predict_scenarios(run_id, [item.model_dump() for item in request.scenarios])
 
 
 def public(run):

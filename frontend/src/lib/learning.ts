@@ -9,6 +9,13 @@ export const defaultLearning: LearningDraft = {
   threshold: 0.5,
 }
 
+export const presetLearning: LearningDraft = {
+  name: 'Modelo pronto · StandardScaler',
+  model: { hidden_layers: [32, 16], activation: 'relu', optimizer: 'adam', learning_rate: 0.001, l2: 0.0001 },
+  training: { epochs: 100, batch_size: 32, early_stopping: true, patience: 10, seed: 42 },
+  threshold: 0.5,
+}
+
 export function validLearning(draft: LearningDraft): boolean {
   try {
     const { model, training } = draft

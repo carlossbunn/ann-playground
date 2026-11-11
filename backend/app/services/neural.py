@@ -134,11 +134,13 @@ def classification_metrics(y, probability, threshold: float) -> dict:
         "confusion_matrix": [[tn, fp], [fn, tp]], "tn": tn, "fp": fp, "fn": fn, "tp": tp,
         "accuracy": divide(tp + tn, tn + fp + fn + tp), "precision": precision,
         "recall": recall, "specificity": divide(tn, tn + fp),
+        "negative_predictive_value": divide(tn, tn + fn),
         "f1": divide(2 * precision * recall, precision + recall),
         "predictive_loss": float(log_loss(y, np.asarray(probability, dtype=float), labels=[0, 1])),
         "zero_division": 0, "threshold": threshold, "samples": len(y),
         "undefined_metrics": [name for name, denominator in [
             ("precision", tp + fp), ("recall", tp + fn), ("specificity", tn + fp),
+            ("negative_predictive_value", tn + fn),
             ("f1", 2 * tp + fp + fn),
         ] if denominator == 0],
     }

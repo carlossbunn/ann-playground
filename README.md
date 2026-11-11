@@ -75,6 +75,10 @@ O app completo informa `phase=5`, `ml_engine="tensorflow"` e `training_available
 6. Na etapa 8 ou em **Experimentos**, marque curvas para comparar e use **Selecionar para teste** na linha do modelo escolhido.
 7. Na etapa 9, confirme a escolha pela validação e abra o teste final. Exporte o **Relatório HTML** para obter tabelas e os dois gráficos em um arquivo independente; abra-o no navegador e use Imprimir → Salvar como PDF, se desejar. O Markdown contém as tabelas e SVGs inline (a exibição dos gráficos depende do leitor Markdown).
 
+### Use seu modelo
+
+Na opção **Use seu modelo** do menu, escolha um experimento concluído, carregue uma amostra de treino ou validação, altere as leituras e compare a previsão com a referência. A API recarrega e confere os artefatos salvos e aplica o pipeline original sem novo ajuste; o teste reservado não é fornecido como amostra. A tabela mostra os valores após imputação e escala, inclusive média e divisor quando o scaler é StandardScaler. O contexto de máquina de furação é uma analogia didática: o CSV não documenta sensores físicos, unidades nem o significado das classes.
+
 **Ciclo de estudo:** o primeiro experimento reserva a coorte e as partições (fonte, seed e proporções). Média/mediana/KNN, scaler, arquitetura e hiperparâmetros podem variar sem trocar as amostras de avaliação. Mudar de coorte por remoção, seed ou proporções após o primeiro treino retorna 409. Isso evita usar no treino de um experimento as amostras de teste de outro.
 
 Ao abrir o teste, a seleção é congelada e novos treinos desse ciclo são encerrados. Recarregar a página ou reiniciar o app mantém a reserva e o resultado. Consultar novamente o mesmo resultado não reexecuta a avaliação. Uma falha operacional permite repetir somente o modelo já selecionado. Um estudo independente exige uma nova reserva de dados; a interface não oferece botão para reabrir o mesmo holdout como se fosse novo.
@@ -126,6 +130,22 @@ Exemplo de configuração aceita por `POST /api/preprocessing/preview`:
 A resposta contém configuração aplicada, cobertura, partições/classes, hashes, versão do scikit-learn, nomes reais das features, tratamento categórico e `numeric_before_after`. Este último inclui `samples`, estatísticas e histogramas antes da imputação, após imputação e após escala. O código Python retornado reproduz o pipeline e imprime os IDs das partições para registro local.
 
 **KNN:** padroniza internamente os atributos numéricos com estatísticas do treino para calcular distâncias e devolve as estimativas à escala original; só então aplica o scaler escolhido. **Remoção:** seleciona registros completos nos atributos antes de dividir, informa perda por classe e altera a população do estudo. **MinMax:** valores de validação podem ficar fora de [0, 1], pois os extremos vêm apenas do treino.
+
+### Gráficos com Matplotlib
+
+O Matplotlib está incluído nas dependências do backend. Na raiz do projeto, gere histogramas, boxplots e correlação descritiva do CSV completo:
+
+```bash
+backend/.venv/bin/python scripts/graficos_matplotlib.py
+```
+
+Para incluir curvas reais de um experimento, baixe o **JSON** na área de exportação e informe o caminho do arquivo:
+
+```bash
+backend/.venv/bin/python scripts/graficos_matplotlib.py --experimento /caminho/para/experimento.json
+```
+
+Os PNGs ficam em `local_storage/graficos/`; use `--saida /caminho` para outro diretório. O JSON de um experimento concluído também gera um gráfico das métricas de validação e, se disponível, do teste. Se o JSON contiver um teste final já realizado, a matriz de confusão 2×2 também será gerada; o script não abre nem reexecuta o teste. O SHA-256 do CSV é conferido antes de usar os resultados. Reexporte o JSON após a avaliação final para incluir a matriz. As figuras descritivas usam a base inteira, sem ajustar o pipeline de treinamento.
 
 ### Verificações
 
